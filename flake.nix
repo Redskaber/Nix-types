@@ -13,12 +13,10 @@
     ...
   } @ inputs: let
     lib = import ./lib;
-    test_enum = import ./test/enum;
-  in
-  {
-    debug.enum = test_enum;
-    inherit lib;
-  };
+    export = {
+      test = import ./test;
+    } // lib;
+  in export;
 }
 
 

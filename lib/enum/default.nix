@@ -28,7 +28,7 @@ let
       matchValidTypes = [ "list" "set" ];
       matchValidMultiInstPatternTypes = [ "set" "lambda" ];
       matchWildCard = "_";
-      typeIdents = [ "__type__" "__meta__" "match" "toType" "serialize" ];
+      typeIdents = [ "__type__" "__meta__" "match" "serialize" ];
       instIdents = [ "__IS_ENUM_INSTANCE_MASKER_V1__" "type" "tag" "value" "toString" ];
     };
     types = {
@@ -202,7 +202,7 @@ let
       __meta__,
       match,
       serialize,
-      toType,
+      # toType,
       ...
     } @funcs: funcs;
 
@@ -908,7 +908,7 @@ let
       __variants__ = enum-struct.variants;
       match = fn-match;
       serialize = fn-serialize;
-      toType = lib: lib.types.enum (builtins.attrnames constructors);
+      # toType = lib: lib.types.enum (builtins.attrnames constructors);
     });
   fn-mkEnumInstStructPostableVariants = enum-struct:
     (fn-mkPostableVariantDispatchs enum-struct)

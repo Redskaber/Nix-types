@@ -4,9 +4,8 @@
 # @description: type::test::default
 # @directory: https://nix.dev/manual/nix/2.33/command-ref/new-cli/nix3-flake.html
 
-{ nixpkgs, ... }:
 {
-  imports = [ ./enum ];
+  enum = import ./enum;
 }
 
 
