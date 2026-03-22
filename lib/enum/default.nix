@@ -28,8 +28,10 @@ let
       matchValidTypes = [ "list" "set" ];
       matchValidMultiInstPatternTypes = [ "set" "lambda" ];
       matchWildCard = "_";
-      typeIdents = [ "__type__" "__meta__" "match" "serialize" ];
+      genericIdents = [ "__typename__" "__isGeneric__" "__genericParams__" "__arity__" "__functor" "instantiate" ];
+      typeIdents = [ "__typename__" "__meta__" "match" "serialize" ];
       instIdents = [ "__IS_ENUM_INSTANCE_MASKER_V1__" "type" "tag" "value" "toString" ];
+      fn.toString = "toString";
     };
     types = {
       literals = [ "int" "float" "bool" "null" "string" "path" ];
@@ -92,7 +94,7 @@ let
     fn-indexedAttrs = list: extractor:
       let length = builtins.length list; in
       builtins.listToAttrs (builtins.genList (index: {
-        name = "_${toString index}";
+        name = "_${builtins.toString index}";
         value = extractor (builtins.elemAt list index);
       }) length);
     fn-listToIndexedAttrs = list: fn-indexedAttrs list (x: x);
@@ -110,13 +112,24 @@ let
     fn-isContainer = v: builtins.any (t: (builtins.typeOf v) == t) config.types.containers;
     fn-isEnum = v: (builtins.isAttrs v) && (builtins.all (k: builtins.hasAttr k v) config.keys.typeIdents);
     fn-isInst = v: (builtins.isAttrs v) && (builtins.all (k: builtins.hasAttr k v) config.keys.instIdents);
+    fn-isGeneric = v: (builtins.isAttrs v) && ((builtins.all (k: builtins.hasAttr k v) config.keys.genericIdents) && v.__isGeneric__);
     fn-isPostable = v: builtins.any (t: (builtins.typeOf v) == t) config.keys.postables;
     fn-isPostableValidRst = v: builtins.any (t: (builtins.typeOf v) == t) config.keys.postableValidRstTypes;
     fn-isMatchInputTp = v: builtins.any (t: (builtins.typeOf v) == t) config.keys.matchValidTypes;
     fn-isMatchMultiInstPatternTp = v: builtins.any (t: (builtins.typeOf v) == t) config.keys.matchValidMultiInstPatternTypes;
+    fn-isType = v: t:
+      if (fn-isGeneric v)   then v == t
+      else if (fn-isEnum v) && (t ? __meta__) then v.__meta__ == t.__meta__
+      else if (fn-isInst v) && (t ? __meta__) then v.type == t.__meta__
+      else false;
     fn-descTp = v:
-      if fn-isInst v then "enum::${v.type.typename}::${v.tag}"
-      else if fn-isEnum v then "enum::${v.__type__}"
+      if fn-isGeneric v   then "enum::${v.__typename__}<${builtins.concatStringsSep "," v.__genericParams__}>"
+      else if fn-isEnum v then "enum::${v.__typename__}${
+        if v.__meta__.isGenericInst then
+          "<${builtins.concatStringsSep "," (builtins.attrValues v.__meta__.rParams)}>"
+        else ""
+      }"
+      else if fn-isInst v then v.toString
       else builtins.typeOf v;
     fn-parseTypeSignature = type-signature:
       let
@@ -166,7 +179,7 @@ let
 
     # Enum::EnumGenericTypeStruct
     EnumGenericTypeStruct = {
-      __type__,
+      __typename__,
       __isGeneric__ ? false,
       __genericParams__ ? [],
       __arity__ ? 0,
@@ -198,7 +211,7 @@ let
     # Struct::EnumTypeFuncs
     # { ... }
     EnumTypeFuncs = {
-      __type__,
+      __typename__,
       __meta__,
       match,
       serialize,
@@ -304,7 +317,7 @@ let
         else throw ''
             enum error: Generic Instantiator validator.
               Invalid generic params type.
-              Expected Generic Instantiator real type (enum,int,float,bool,null,path,string). found `${builtins.typeOf real-type}`.
+              Expected Generic Instantiator real type (enum,int,float,bool,null,path,string). found `${types.fn-descTp real-type}`.
           '';
       fn-validator_genericSupportRealTypeParams = generic-realtypes:  # onlylist-params
         builtins.foldl' (status: realtype:
@@ -391,41 +404,34 @@ let
           then fn-validator_genericAttrRealType generic-enum-meta generic-realtype-args
         else throw ''
             enum error: Generic Instantiator validator.
-              Expected Generic Instantiator params type (list | attr), found ${builtins.typeOf generic-realtype-args}.
+              Expected Generic Instantiator params type (list | attr), found ${types.fn-descTp generic-realtype-args}.
           '';
     };
 
     postable = rec {
       fn-validator_postableValue = postable-value:
         if types.fn-isPostable postable-value then true
-        else throw "Enum::variant: Expected (enum, list, function, literals), find ${builtins.typeOf postable-value}";
+        else throw "Enum::variant: Expected (enum, list, function, literals), found ${types.fn-descTp postable-value}";
 
       fn-validator_postableEnumValue = postable-value: postable-args: # enum: instance:
         if ! types.fn-isInst postable-args then
           if types.fn-isEnum postable-args then
             throw ''
-              Validation failed: Expected enum::${postable-value.__type__
-              } instance, found enum type `enum::${postable-args.__type__}`.
+              Validation failed: Expected ${types.fn-descTp postable-value
+              } instance, found enum type ${types.fn-descTp postable-args}.
             ''
           else
             throw ''
-              Validation failed: Expected enum::${postable-value.__type__} instance, found ${builtins.typeOf postable-args}
+              Validation failed: Expected ${types.fn-descTp postable-value
+              } instance, found ${types.fn-descTp postable-args}.
             ''
         else if !(builtins.hasAttr "__meta__" postable-value) then
           throw "Validation failed: Constraint enum missing '__meta__' (outdated definition)"
-        else if postable-args.type != postable-value.__meta__ then
+        else if !(types.fn-isType postable-args postable-value) then
           throw ''
             Type mismatch in variant argument:
-              Expected: ${postable-value.__type__}${
-                if postable-value.__meta__.rParams != []
-                  then "<${builtins.concatStringsSep "," postable-value.__meta__.rParams}>"
-                else ""
-              }
-              Got: ${postable-args.type.typename}${
-                if postable-args.type.rParams != []
-                  then "<${builtins.concatStringsSep "," postable-args.type.rParams}>"
-                else ""
-              }
+              Expected: ${types.fn-descTp postable-value}
+              Got: ${types.fn-descTp postable-args}
           ''
         else if ! (builtins.hasAttr postable-args.tag postable-value)
           then throw ''
@@ -443,10 +449,10 @@ let
           Argument count mismatch in ${enum-struct.meta.typename}::${postable-variant}:
             Expected ${builtins.toString enumTypes-count} arguments: [${builtins.concatStringsSep ", " (
               map (desc:
-                if types.fn-isEnum desc then "enum::${desc.__type__}"
+                if types.fn-isEnum desc then types.fn-descTp desc
                 else if builtins.isList desc then "tuple<...>"
                 else if builtins.isFunction desc then "validator-fn"
-                else builtins.typeOf desc
+                else types.fn-descTp desc
               ) postable-values
             )}]
             Got ${builtins.toString enumInsts-count} arguments
@@ -459,15 +465,19 @@ let
         in
         if types.fn-isLiteral postable-value then
           if exp-type == act-type then true else throw ''
-            enum error: Type mismatch ${ctx-info}: expected ${exp-type}, found ${act-type}
+            enum error: Type mismatch ${ctx-info}:
+            Expected ${exp-type}, found ${act-type}
           ''
-        else if types.fn-isEnum postable-value then builtins.seq (validators.postable.fn-validator_postableEnumValue postable-value postable-arg) {}
+        else if types.fn-isEnum postable-value then
+          builtins.seq (validators.postable.fn-validator_postableEnumValue postable-value postable-arg) {}
         else if builtins.isList postable-value then
           if ! (builtins.isList postable-arg) then throw ''
-            enum error: Type mismatch ${ctx-info}: expected tuple (list), found ${act-type}
+            enum error: Type mismatch ${ctx-info}:
+            Expected tuple (list), found ${act-type}
             ''
           else if (builtins.length postable-value) != (builtins.length postable-arg) then throw ''
-            enum error: Tuple length mismatch ${ctx-info}: expected ${builtins.length postable-value}, found ${builtins.length postable-arg}
+            enum error: Tuple length mismatch ${ctx-info}:
+            Expected ${builtins.length postable-value}, found ${builtins.length postable-arg}
           ''
           else
             builtins.foldl' (status: index:
@@ -485,7 +495,7 @@ let
         else if builtins.isFunction postable-value then
           postable-value postable-arg
         else throw ''
-          enum error: Unsupported type descriptor ${ctx-info}: ${builtins.typeOf postable-value}
+          enum error: Unsupported type descriptor ${ctx-info}: ${types.fn-descTp postable-value}
         '';
       fn-validator_postableTuplePositionType = enum-struct: postable-variant: postable-values: postable-args:
         let
@@ -517,11 +527,11 @@ let
             ''
           else if types.fn-isEnum rst-postable then
             throw ''
-              Validation only result (bool | error attrset), find enum type ${rst-postable.__type__}
+              Validation only result (bool | error attrset), find enum type ${types.fn-descTp rst-postable}
             ''
           else if types.fn-isInst rst-postable then
             throw ''
-              Validation only result (bool | error attrset), find enum instance ${rst-postable.toString}
+              Validation only result (bool | error attrset), find enum instance ${types.fn-descTp rst-postable}
             ''
           else if builtins.isAttrs rst-postable && rst-postable ? __throw then
             throw ''
@@ -583,7 +593,7 @@ let
         if builtins.all (k: builtins.hasAttr k input) match-porder then true
         else
           throw ''
-            enum::match: Input missing keys from __PORDER__: ${
+            enum::match: Input missing keys from '${config.keys.reserved.__PORDER__}': ${
             builtins.concatStringsSep ", " (
               builtins.filter (k: !builtins.hasAttr k input) match-porder
             )
@@ -593,7 +603,7 @@ let
         else
           throw ''
             Invalid pattern structure at '${if path == [] then "<root>" else builtins.concatStringsSep "." path}':
-              Expected function or nested attrset, got ${builtins.typeOf node}
+              Expected function or nested attrset, got ${types.fn-descTp node}
               Fix: Patterns must be nested attrsets ending in functions (e.g., Red.Circle.local = {c,s,p}: ...)
           '';
       fn-validator_fn-match_multiPatternUniqueChecker = patternKeys: uniqueKeys:
@@ -622,7 +632,7 @@ let
           Pattern match non-exhaustive for tags [${builtins.concatStringsSep ", " instanceTags}]!${inputHint}
           Defined patterns: ${if avail == [] then "(none)" else builtins.concatStringsSep ", " avail}
           Defined patterns (ordered by specificity): ${builtins.concatStringsSep "\n  " (builtins.map (p:
-            "${toString p.specificity}: ${p.originalKey}"
+            "${builtins.toString p.specificity}: ${p.originalKey}"
             ) patternList
           )}
           Hint: Add wildcard handler:
@@ -634,7 +644,7 @@ let
     fn-validator_variantsInvalidType = variants:
       if types.fn-isContainer variants then true
       else throw ''
-        enum error: Expected list (unit-enum) or attrset (param-enum), found ${builtins.typeOf variants}
+        enum error: Expected list (unit-enum) or attrset (param-enum), found ${types.fn-descTp variants}
       '';
   };
 
@@ -647,20 +657,24 @@ let
   fn-mkPostableArgToString = postable-arg:
     if postable-arg == config.const.non-postable  then "<non-postable>"
     else if builtins.isAttrs postable-arg
-      && builtins.hasAttr "toString" postable-arg then postable-arg.toString
+      && builtins.hasAttr config.keys.fn.toString postable-arg then postable-arg.toString
     else if builtins.isString postable-arg        then postable-arg
     else if builtins.isInt postable-arg
-      || builtins.isFloat postable-arg      then toString postable-arg
+      || builtins.isFloat postable-arg      then builtins.toString postable-arg
     else if builtins.isBool postable-arg    then if postable-arg then "true" else "false"
     else if builtins.isList postable-arg    then "<list>"
     else if builtins.isAttrs postable-arg   then "<attrset>"
     else "<${builtins.typeOf postable-arg}>";
-  fn-mkPostableVariantString = enum-type: postable-variant: postable-args:
+  fn-mkPostableVariantString = enum-struct: postable-variant: postable-args:
     (fn-mkPostableStringArgs postable-args)
     |> (pstArgs: if pstArgs == [] then "" else "(${
           builtins.concatStringsSep "," (builtins.map fn-mkPostableArgToString pstArgs)
        })")
-    |> (postable-args-display: "enum::${enum-type}::${postable-variant}${postable-args-display}");
+    |> (postable-args-display: "enum::${enum-struct.meta.typename}${
+        if enum-struct.meta.isGenericInst then
+          "<${builtins.concatStringsSep "," (builtins.attrValues enum-struct.meta.rParams)}>"
+        else ""
+      }::${postable-variant}${postable-args-display}");
 
   fn-getAttrBasePostable = postable: builtins.removeAttrs postable config.keys.internal;
   fn-getTupleBasePostable = tuple-postable: extractor:
@@ -692,7 +706,7 @@ let
       tag = postable-variant;
       type = enum-struct.meta;
       value = fn-mkMapTuplePostable postable-args;  # postable params
-      toString = fn-mkPostableVariantString enum-struct.meta.typename postable-variant postable-args;
+      toString = fn-mkPostableVariantString enum-struct postable-variant postable-args;
       __IS_ENUM_INSTANCE_MASKER_V1__ = true;
     };
 
@@ -726,7 +740,7 @@ let
       tag = postable-variant;
       type = enum-struct.meta;
       value = postable-value;
-      toString = fn-mkPostableVariantString enum-struct.meta.typename postable-variant postable-value;
+      toString = fn-mkPostableVariantString enum-struct postable-variant postable-value;
       __IS_ENUM_INSTANCE_MASKER_V1__ = true;
     };
 
@@ -757,7 +771,7 @@ let
       tag = variant;
       type = enum-struct.meta;
       value = config.const.non-postable;
-      toString = fn-mkPostableVariantString enum-struct.meta.typename variant config.const.non-postable;
+      toString = fn-mkPostableVariantString enum-struct variant config.const.non-postable;
       __IS_ENUM_INSTANCE_MASKER_V1__ = true;
     };
   fn-mkTupleVariant = enum-struct: variant:
@@ -853,7 +867,6 @@ let
           matched params-mapping len instanceTags patternList
       ) (handler boundArgs);
 
-
   fn-match-tryPorderKeys = input: patterns:
     if builtins.hasAttr config.keys.reserved.__PORDER__  patterns then
       let pattern_order = builtins.getAttr config.keys.reserved.__PORDER__ patterns; in
@@ -903,7 +916,7 @@ let
 
   fn-mkEnumStructFunction = enum-struct: constructors:
     (constructors // types.EnumTypeFuncs {
-      __type__ = enum-struct.meta.typename;
+      __typename__ = enum-struct.meta.typename;
       __meta__ = enum-struct.meta;
       __variants__ = enum-struct.variants;
       match = fn-match;
@@ -926,7 +939,7 @@ let
     else
       generic-realtype-args;
   fn-mkGenericParamRealType = real-type:
-    if types.fn-isEnum real-type then real-type.__type__
+    if types.fn-isEnum real-type then real-type.__typename__
     else builtins.typeOf real-type;
   fn-mkGenericRealTypeParamsInstiator = generic-labels: generic-realtype-args:    # onlylist
     builtins.listToAttrs (
@@ -1001,7 +1014,7 @@ let
       );
   fn-mkGenericEnumTypeStructInstantiator = generic-enum-meta: instantiator:
     types.EnumGenericTypeStruct {
-      __type__ = generic-enum-meta.typename;
+      __typename__ = generic-enum-meta.typename;
       __isGeneric__ = true;
       __genericParams__ = generic-enum-meta.gParams;
       __arity__ = builtins.length generic-enum-meta.gParams;

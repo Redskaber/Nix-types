@@ -191,6 +191,8 @@ let
   color = Color.Red;
   shape = Shape.Circle Color.Red;
   position = Position.local;
+  eshape = Shape.Circle Position.local;
+  eggp = GP.ADT GP;
   # rs-example = GP.match [ color shape position ] {
   #   Red.Circle.local = { colorname, shapename, positionname }: ...;
   #   _._._ = { colorname, shapename, positionname }: ...;
@@ -215,6 +217,17 @@ let
     _._._             = { ... }: 0;
   };
 
+  is-generic-ture  = types.fn-isGeneric GenericPostable;
+  is-generic-false = types.fn-isGeneric GP;
+  is-generic-type-ture  = types.fn-isType GenericPostable GenericPostable;
+  is-generic-type-false = types.fn-isType GP GenericPostable;
+  is-inst-true  = types.fn-isType gen-adt GP;
+  is-inst-false = types.fn-isType gen-adt GenericPostable;
+  is-enum-true  = types.fn-isType GP GP;
+  is-enum-false = types.fn-isType GP GenericPostable;
+  is-desc-generic = types.fn-descTp GenericPostable;
+  is-desc-enum    = types.fn-descTp GP;
+  is-desc-inst    = types.fn-descTp gen-cur;
 in
 {
   inherit
@@ -253,6 +266,19 @@ in
     color shape position
     lib
     types
+    is-generic-ture
+    is-generic-false
+    is-generic-type-ture
+    is-generic-type-false
+    is-enum-true
+    is-enum-false
+    is-inst-true
+    is-inst-false
+    is-desc-generic
+    is-desc-enum
+    is-desc-inst
+    eshape
+    eggp
   ;
 }
 
