@@ -29,7 +29,7 @@ let
       matchValidMultiInstPatternTypes = [ "set" "lambda" ];
       matchWildCard = "_";
       genericIdents = [ "__typename__" "__isGeneric__" "__genericParams__" "__arity__" "__functor" "instantiate" ];
-      typeIdents = [ "__typename__" "__meta__" "match" "serialize" ];
+      typeIdents = [  "__meta__" "__typename__" "__variants__" "match" "serialize" ];
       instIdents = [ "__IS_ENUM_INSTANCE_MASKER_V1__" "type" "tag" "value" "toString" ];
       fn.toString = "toString";
     };
@@ -109,10 +109,16 @@ let
   # --------------------------------------------------------------------------
   types = rec {
     fn-isLiteral = v: builtins.any (t: (builtins.typeOf v) == t) config.types.literals;
+    fn-isDeepLiteral = v:
+      if types.fn-isLiteral v then true
+      else if builtins.isList v then builtins.all fn-isDeepLiteral v
+      else if builtins.isAttrs v then false
+      else false;
     fn-isContainer = v: builtins.any (t: (builtins.typeOf v) == t) config.types.containers;
     fn-isEnum = v: (builtins.isAttrs v) && (builtins.all (k: builtins.hasAttr k v) config.keys.typeIdents);
     fn-isInst = v: (builtins.isAttrs v) && (builtins.all (k: builtins.hasAttr k v) config.keys.instIdents);
     fn-isGeneric = v: (builtins.isAttrs v) && ((builtins.all (k: builtins.hasAttr k v) config.keys.genericIdents) && v.__isGeneric__);
+    fn-isGenericInst = v: (fn-isEnum v) && v.__meta__.isGenericInst;
     fn-isPostable = v: builtins.any (t: (builtins.typeOf v) == t) config.keys.postables;
     fn-isPostableValidRst = v: builtins.any (t: (builtins.typeOf v) == t) config.keys.postableValidRstTypes;
     fn-isMatchInputTp = v: builtins.any (t: (builtins.typeOf v) == t) config.keys.matchValidTypes;
@@ -306,11 +312,54 @@ let
 
     generic = rec {
       fn-validator_genericInvalidPattern = meta: variants:
-        if builtins.isAttrs variants then true
+        if builtins.isAttrs variants
+          then fn-validator_genericVariants meta variants
         else throw ''
           enum error: Generic enum '${meta.typename
           }' requires attrset variants (parameterized). Tuple variants (list) are invalid for generics.
         '';
+
+    fn-validator_genericVariants = meta: variants:
+      (builtins.attrNames variants)
+      |> (names: builtins.foldl' (status: name:
+        fn-validator_genericVariantValue meta variants.${name}
+      ) true names);
+
+    fn-validator_genericVariantTupleValue = meta: variantTupleValue:
+      let
+        len = builtins.length variantTupleValue;
+        indexed = builtins.genList (i: {
+          index = i;
+          value = builtins.elemAt variantTupleValue i;
+        }) len;
+        invalid = builtins.filter (p:
+              !(builtins.isString p.value)
+          ||  !(builtins.elem p.value meta.gParams)
+        ) indexed;
+        is-strings = (builtins.length invalid) == len;
+      in
+      if invalid != [] && ! is-strings then
+        let
+          errs = builtins.map (p:
+            "[index ${builtins.toString p.index}] ${
+              if builtins.isString p.value
+                then "string '${p.value}' (not in [${builtins.concatStringsSep ", " meta.gParams}])"
+              else
+                "type '${builtins.typeOf p.value}' (must be string placeholder)"
+            }"
+          ) invalid;
+        in throw ''
+          Generic enum variant list contains invalid elements.
+          Invalid elements in enum '${meta.typename}':
+          ${builtins.concatStringsSep "\n  " errs}
+        ''
+      else true;
+
+    fn-validator_genericVariantValue = meta: variantValue:
+      if builtins.isList variantValue
+        then fn-validator_genericVariantTupleValue meta variantValue
+      else true;
+
       /* ---------- STAGE 1: GENERIC ARG VALIDATION (CRITICAL BARRIER) ---------- */
       fn-validator_genericParamRealType = real-type:
         if (types.fn-isEnum real-type) || (types.fn-isLiteral real-type) then true
@@ -658,7 +707,7 @@ let
     if postable-arg == config.const.non-postable  then "<non-postable>"
     else if builtins.isAttrs postable-arg
       && builtins.hasAttr config.keys.fn.toString postable-arg then postable-arg.toString
-    else if builtins.isString postable-arg        then postable-arg
+    else if builtins.isString postable-arg        then builtins.toJSON postable-arg
     else if builtins.isInt postable-arg
       || builtins.isFloat postable-arg      then builtins.toString postable-arg
     else if builtins.isBool postable-arg    then if postable-arg then "true" else "false"
@@ -723,8 +772,9 @@ let
     let
       rstpst = if builtins.hasAttr config.keys.generic.isGenericInst enum-struct.meta then
         let
-          G = if builtins.hasAttr config.keys.generic.genericParams enum-struct.meta then
-            enum-struct.meta.genericParams else {};
+          G = if builtins.hasAttr config.keys.generic.genericParams enum-struct.meta
+            then enum-struct.meta.genericParams
+            else {};
         in postable-values G postable-args
         else postable-values postable-args;
     in
@@ -750,10 +800,15 @@ let
     |> (isLiteral:
       if isLiteral
         then fn-postableLiteralConstructor enum-struct postable-variant postable-value
+      else if types.fn-isInst postable-value
+        then fn-postableLiteralConstructor enum-struct postable-variant postable-value
       else if types.fn-isEnum postable-value
         then (postable-args: fn-postableEnumConstructor enum-struct postable-variant postable-value postable-args)
       else if builtins.isList postable-value
-        then (postable-args: fn-postableTupleConstructor enum-struct postable-variant postable-value postable-args)
+        then
+          if types.fn-isDeepLiteral postable-value
+            then fn-postableLiteralConstructor enum-struct postable-variant postable-value
+          else (postable-args: fn-postableTupleConstructor enum-struct postable-variant postable-value postable-args)
       else if builtins.isFunction postable-value
         then (postable-args: fn-postableFunConstructor enum-struct postable-variant postable-value postable-args)
       else
@@ -766,18 +821,18 @@ let
     ) enum-struct.variants;
 
 
-  fn-mkTupleVariantInstance = enum-struct: variant:
+  fn-mkTupleVariantInstance = enum-struct: variant: postable-value:
     types.VariantInstValueBase {
       tag = variant;
       type = enum-struct.meta;
-      value = config.const.non-postable;
-      toString = fn-mkPostableVariantString enum-struct variant config.const.non-postable;
+      value = postable-value;
+      toString = fn-mkPostableVariantString enum-struct variant postable-value;
       __IS_ENUM_INSTANCE_MASKER_V1__ = true;
     };
   fn-mkTupleVariant = enum-struct: variant:
     types.TupleVariant {
       name  = variant;
-      value = fn-mkTupleVariantInstance enum-struct variant;
+      value = fn-mkTupleVariantInstance enum-struct variant config.const.non-postable;
     };
   fn-mkEnumInstStructTupleVariants = enum-struct:
     (map(variant: fn-mkTupleVariant enum-struct variant) enum-struct.variants)

@@ -130,6 +130,29 @@ let
   # Graph3.match [ Color Color Color] {
   #   (enum::Color::Red, enum::Color::Green, enum::Color::Blue) => {}
   # }
+
+  drive = enum "Drive" {
+    self                = Color.Red;
+    intel               = "intel";
+    amd                 = "amd";
+    nvidia              = "nvidia";
+    nvidia-prime        = "nvidia-prime";
+    intel-nvidia        = [ "intel" "nvidia" ];
+    amd-nvidia          = [ "amd" "nvidia" ];
+    intel-nvidia-prime  = [ "intel" "nvidia-prime" ];
+    amd-nvidia-prime    = [ "amd" "nvidia-prime" ];
+  };
+  self    = drive.self;
+  intel   = drive.intel;
+  amd     = drive.amd;
+  nvidia  = drive.nvidia;
+  nvidia-prime  = drive.nvidia-prime;
+  intel-nvidia  = drive.intel-nvidia;
+  amd-nvidia    = drive.amd-nvidia;
+  intel-nvidia-prime  = drive.intel-nvidia-prime;
+  amd-nvidia-prime    = drive.amd-nvidia-prime;
+
+  # 3. Generic enum
   constraint_validator_func = G: inst:
     if inst.pos1.type != G.X.__meta__ then {
         __throw = "Expected pos1 type ${G.X.__type__}, found ${inst.pos1.type.typename}";
@@ -147,7 +170,10 @@ let
     Null      = null;
     Attr    = { a=100; b=20.0; };     # attr need used enum type
     Color     = Color;                # non-constraints
+    Red       = Color.Red;
     ADT       = "X";
+    Strings   = [ "first string" "second string" ];
+    # Attrs     = [ { a = "reds"; b = "color"; } { c= "bar"; d=100; } ];  # unsup
     Position  = [ "X" "Y" "Z" ];
     Currenter = G:{ pos1 ? "" , pos2 ? "", pos3 ? "" }@inst: inst;  # default only chioces
     Constraint= G:{ pos1, pos2, pos3 }@inst: constraint_validator_func G inst;
@@ -165,6 +191,7 @@ let
   #   GG = GenericPostable { X=Color; Y=Shape; Z=Position; };
   #
   # GP = GenericPostable [ Color Shape Position ];
+  gpi = GenericPostable { X=0; Y=""; Z=./.; };
   GP = GenericPostable { X=Color; Y=Shape; Z=Position; };
   # GP = GenericPostable Color;
   gen-pi      = GP.Int;
@@ -174,8 +201,11 @@ let
   gen-path    = GP.Path;
   gen-null    = GP.Null;
   gen-pattr   = GP.Attr;
+  gen-red     = GP.Red;
   gen-pcr     = GP.Color Color.Red;
   gen-adt     = GP.ADT Color.Blue;
+  gen-strings = GP.Strings;
+  # gen-attrs   = GP.Attrs [];
   gen-pp      = GP.Position [ Color.Red (Shape.Circle Color.Red) Position.local ];   # position constraints
   gen-cur     = GP.Currenter { pos1=Color.Green; pos2=Color.Green; pos3=Color.Blue; };  # mapping constraints and through default-value placeholder-mapping type used constraints    (一样的)
   gen-dcur    = GP.Currenter { pos2=Color.Red; };
@@ -228,6 +258,11 @@ let
   is-desc-generic = types.fn-descTp GenericPostable;
   is-desc-enum    = types.fn-descTp GP;
   is-desc-inst    = types.fn-descTp gen-cur;
+
+  is-genericInst-true   = types.fn-isGenericInst GP;
+  is-genericInst-false  = types.fn-isGenericInst drive;
+
+  gpia = gpi.Position [ 0 "" ./default.nix ];
 in
 {
   inherit
@@ -250,10 +285,13 @@ in
     gen-pf
     gen-bo
     gen-str
+    gen-strings
+    # gen-attrs
     gen-path
     gen-null
     gen-pattr
     gen-adt
+    gen-red
     gen-pcr
     gen-pp
     gen-cur
@@ -263,6 +301,16 @@ in
     rs-gp
     rs-gps
     rs-gpsd
+    drive
+    self
+    intel
+    intel-nvidia
+    intel-nvidia-prime
+    amd
+    amd-nvidia
+    amd-nvidia-prime
+    nvidia
+    nvidia-prime
     color shape position
     lib
     types
@@ -277,8 +325,12 @@ in
     is-desc-generic
     is-desc-enum
     is-desc-inst
+    is-genericInst-true
+    is-genericInst-false
     eshape
     eggp
+    gpi
+    gpia
   ;
 }
 
