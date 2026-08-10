@@ -320,7 +320,7 @@ fw.runAll [
   # ============================================================
   # J. LARGE ENUM — LAZY (unaccessed variants not constructed)
   # ============================================================
-  { name = "lazy.large.01-1000-variants-access-one-only";
+  { name = "lazy.large.01-1000-variants-access-two-only";
     test =
       let
         names = builtins.genList (n: "V${builtins.toString n}") 1000;
@@ -330,7 +330,7 @@ fw.runAll [
         && (Big.V0.tag == "V0")
         && (Big.V999.tag == "V999"); }
 
-  { name = "lazy.large.02-postable-1000-variants-access-one";
+  { name = "lazy.large.02-postable-1000-variants-access-two";
     test =
       let
         variants = builtins.listToAttrs (builtins.genList (n: {

@@ -59,7 +59,7 @@
         type = "app";
         program = toString (pkgs.writeShellScript "nix-types-demo" ''
           cat <<'EOF'
-=== nix-types v3.0 demo ===
+=== nix-types v3.4 demo ===
 
 1) Unit enum:
    Color = enum "Color" [ "Red" "Green" "Blue" ];

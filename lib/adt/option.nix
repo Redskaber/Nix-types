@@ -105,6 +105,8 @@ in {
       throw "Option.cases: 'some' handler must be a function, found ${builtins.typeOf handlers.some}"
     else if !(handlers ? none) then
       throw "Option.cases: handlers missing 'none' key (value)"
+    else if builtins.isFunction handlers.none then
+      throw "Option.cases: 'none' handler must be a value, not a function (did you mean result.cases?)"
     else matchOption inst {
       Some = v: handlers.some v.value;
       None = _: handlers.none;

@@ -18,9 +18,8 @@
   keys = {
     # Internal attrs on an enum instance — stripped when computing the
     # "external" view that callers see in the spread of `instance`.
-    # These are ALL fields that the base record sets, so user data with
-    # the same key names would be overridden anyway. Stripping prevents
-    # confusing partial overrides.
+    # Includes both instance fields and enum-type fields to prevent
+    # user data from shadowing library functions.
     internal = [
       "tag"
       "value"
@@ -28,6 +27,9 @@
       "__toString"
       "__meta__"
       "__enumInstance__"
+      "__variants__"
+      "match"
+      "serialize"
     ];
 
     # External (caller-visible) accessor.

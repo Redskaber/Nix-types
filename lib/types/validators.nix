@@ -45,9 +45,12 @@ in rec {
       throw "enum error: variant name must be a string, found ${types.descTp name}"
     else if builtins.match "^[A-Za-z_][A-Za-z0-9_-]*$" name == null then
       throw "enum error: invalid variant name '${name}' (must be alphanumeric identifier, optionally with hyphens)"
+    else if name == config.keys.matchWildCard then
+      throw "enum error: variant name '${name}' conflicts with wildcard pattern"
     else if builtins.elem name config.keys.internal
-         || builtins.elem name [ "match" "serialize" "__variants__" ] then
-      throw "enum error: variant name '${name}' collides with internal field"
+         || builtins.elem name [ "match" "serialize" "__variants__" ]
+         || builtins.elem name (builtins.attrValues config.keys.reserved) then
+      throw "enum error: variant name '${name}' collides with reserved field"
     else true;
 
   validateVariantNames = variants:
@@ -226,11 +229,11 @@ in rec {
           ''
         else if types.isEnum rst-postable then
           throw ''
-            Validation only result (bool | error attrset), find enum type ${types.descTp rst-postable}
+            Validation only result (bool | error attrset), found enum type ${types.descTp rst-postable}
           ''
         else if types.isInst rst-postable then
           throw ''
-            Validation only result (bool | error attrset), find enum instance ${types.descTp rst-postable}
+            Validation only result (bool | error attrset), found enum instance ${types.descTp rst-postable}
           ''
         else if builtins.isAttrs rst-postable && rst-postable ? __throw__ then
           throw ''
@@ -240,7 +243,7 @@ in rec {
         else rst-postable
       else
         throw ''
-          Enum Validation Error: Expected return bool or attr error, find ${types.descTp rst-postable}.
+          Enum Validation Error: Expected return bool or error attrset, found ${types.descTp rst-postable}.
         '';
 
     # Validate that a variant descriptor type is supported.
@@ -252,7 +255,7 @@ in rec {
         throw ''
           enum::args unsupported type
             Expected type (literals | function | list | attrs(enum,inst),...),
-            find ${types.descTp postable}
+            found ${types.descTp postable}
         '';
   };
 
@@ -263,7 +266,7 @@ in rec {
       else throw ''
         enum::match: Invalid input type '${builtins.typeOf input}'
         Expected: [Inst]enum instance | [List]list of enum instances | [Attr]attrset of enum instances
-        Find: ${types.descTp input}.
+        Found: ${types.descTp input}.
       '';
 
     validateInputNonEmpty = input:
@@ -273,7 +276,7 @@ in rec {
         throw ''
           enum::match: Empty input '${if builtins.isList input then "[]" else "{}"}'
           Expected: enum-instance(s) [list or attrset]
-          Find: ${types.descTp input}.
+          Found: ${types.descTp input}.
         '';
 
     # Validate that all elements/values in the input are enum instances.

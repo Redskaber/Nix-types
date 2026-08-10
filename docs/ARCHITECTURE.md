@@ -19,7 +19,7 @@ configurations.
 - **Modern** — uses `|>` pipe operator, `@` pattern binding, `rec` for mutual
   recursion, layered modules with explicit dependency injection.
 - **Efficient** — strict folds (`foldl'`), lazy dispatch on variant shape,
-  no redundant computations; 419 tests run in ~70 ms.
+  no redundant computations; 440 tests run in ~70 ms.
 - **Clean API** — bare camelCase (no `fn-` prefix), matches nixpkgs convention.
   No backward-compat aliases.
 
@@ -232,7 +232,7 @@ stayed lazy. This catches accidental strictness changes in refactors.
 
 ## 7. Test architecture
 
-419 tests across 15 suites:
+440 tests across 16 suites:
 
 | Suite | Count | Coverage |
 |-------|-------|----------|
@@ -251,7 +251,8 @@ stayed lazy. This catches accidental strictness changes in refactors.
 | audit2 | 18 | regression tests for v3.1 fresh-audit fixes |
 | audit3 | 30 | regression tests for v3.2 final-audit fixes |
 | audit4 | 33 | regression tests for v3.3 exhaustive-audit fixes |
-| **total** | **419** | |
+| audit5 | 21 | regression tests for v3.4 final-exhaustive-audit fixes |
+| **total** | **440** | |
 
 ### Test framework correctness
 

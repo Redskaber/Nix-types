@@ -36,6 +36,9 @@ in rec {
           else if types.isInst input then
             let handler = matchOnce input patterns; in
             if builtins.isFunction handler then handler input else handler
+          else if types.isEnum input then
+            # User passed an enum TYPE instead of an instance.
+            throw "enum::match: expected enum instance, found enum type '${input.__meta__.typename}'"
           else
             # Multi-instance attrset match: validate elements are instances.
             builtins.seq (validators.match.validateInputElements input)

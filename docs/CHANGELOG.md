@@ -1,5 +1,56 @@
 # Changelog
 
+## [3.5.0] — 2026-08-10
+
+### Summary
+
+Final exhaustive-audit fixes: variant name wildcard/reserved-key rejection,
+cases handler validation, error message grammar, enum-type match guard.
+440 tests across 16 suites.
+
+### Medium fixes
+
+**M1. Variant name `_` (wildcard) rejected**
+- A variant named `_` could never be matched specifically (conflicts with
+  the wildcard pattern).
+- Fix: `validateVariantName` now rejects `_` with a clear error.
+
+**M2. Reserved keys `__PORDER__`/`__throw__` rejected as variant names**
+- Variants named `__PORDER__` or `__throw__` interfered with match/validator
+  semantics.
+- Fix: `validateVariantName` now checks `config.keys.reserved` for collisions.
+
+### Low fixes
+
+**L1. `option.cases` validates `none` is not a function**
+- `none = _: 0` would silently return the function instead of calling it.
+- Fix: throws a clear error suggesting `result.cases` if a function is given.
+
+**L3. `match`/`serialize`/`__variants__` added to `config.keys.internal`**
+- Prevents user data in validator returns from polluting instance records
+  with internal markers.
+
+**L4. `flake.nix` demo version updated (v3.0 → v3.4)**
+
+**L5. `run-tests.sh` documents `python3` requirement**
+
+**L8. Error message grammar fixed**
+- "find" → "found", "attr error" → "error attrset" throughout validators.
+
+**L9. `match` on enum TYPE gives clear error**
+- Previously fell through to attrset-match with confusing error.
+- Fix: explicit `isEnum` check throws "expected enum instance, found enum type".
+
+**L10. `lazy.large` test names corrected**
+- Renamed from "access-one-only" to "access-two-only" (accurate).
+
+### Added
+
+- **`test/cases/audit5.nix`** (21 tests) — regression tests for all the
+  above fixes.
+
+---
+
 ## [3.4.0] — 2026-08-10
 
 ### Summary

@@ -3,9 +3,9 @@
 A pure-Nix type system focused on **algebraic data types (ADT / sum types)** with
 **pattern matching**. Zero external dependencies — only Nix builtins.
 
-> v3.4: Exhaustive audit fixes — variant name validation, predicate safety
-> guards, cases handler type validation, serialize lambda handling.
-> 419 tests across 15 suites, all genuinely verifying correctness.
+> v3.5: Final exhaustive audit — variant name wildcard/reserved-key
+> rejection, cases handler validation, error message grammar, enum-type
+> match guard. 440 tests across 16 suites.
 
 ## Highlights
 
@@ -13,11 +13,11 @@ A pure-Nix type system focused on **algebraic data types (ADT / sum types)** wit
 - **Clean API** — bare camelCase (no `fn-` prefix), matches nixpkgs convention.
 - **Safe** — strong validation at every public entry; descriptive, contextual errors.
 - **Modern** — `|>` pipe operator, `@` pattern binding, layered modules.
-- **Efficient** — strict folds, lazy dispatch; 419 tests in ~70 ms.
+- **Efficient** — strict folds, lazy dispatch; 440 tests in ~70 ms.
 - **String interpolation** — `"${instance}"` just works (via `__toString`).
 - **ADT library** — built-in `Option` (Some/None) and `Result` (Ok/Err) with
   full helper API (unwrap, map, andThen, filter, cases, etc.).
-- **Well-tested** — 419 tests across 15 categories.
+- **Well-tested** — 440 tests across 16 categories.
 
 ## Quick start
 
@@ -161,7 +161,7 @@ nix-types/
 ├── test/
 │   ├── default.nix            # test entry
 │   ├── framework.nix          # test framework
-│   └── cases/                 # 15 test suites (419 tests)
+│   └── cases/                 # 16 test suites (440 tests)
 ├── scripts/run-tests.sh       # CLI test runner
 └── docs/
     ├── ARCHITECTURE.md
@@ -199,7 +199,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full lazy/eager map.
 ./scripts/run-tests.sh --json    # JSON for CI
 ```
 
-### Test categories (419 tests)
+### Test categories (440 tests)
 
 | Suite | Count | Coverage |
 |-------|-------|----------|
@@ -218,7 +218,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full lazy/eager map.
 | audit2 | 18 | regression tests for v3.1 fresh-audit fixes |
 | audit3 | 30 | regression tests for v3.2 final-audit fixes |
 | audit4 | 33 | regression tests for v3.3 exhaustive-audit fixes |
-| **total** | **419** | |
+| audit5 | 21 | regression tests for v3.4 final-exhaustive-audit fixes |
+| **total** | **440** | |
 
 > **Note**: The test framework uses `builtins.deepSeq thunk thunk` to verify
 > test return values (not `builtins.seq thunk true`, which would make every

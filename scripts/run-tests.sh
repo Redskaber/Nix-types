@@ -7,7 +7,8 @@
 #   ./scripts/run-tests.sh --json    # print JSON summary
 #   ./scripts/run-tests.sh --verbose # print per-suite breakdown
 #
-# Requires: nix with experimental-features = nix-command flakes pipe-operators
+# Requires: nix (with experimental-features = nix-command flakes pipe-operators)
+#           python3 (for JSON formatting in default/verbose modes)
 
 set -euo pipefail
 
