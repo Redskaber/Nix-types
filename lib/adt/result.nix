@@ -93,8 +93,14 @@ in {
   # handlers must be functions that receive the unwrapped value:
   #   cases (ok 42) { ok = x: x + 1; err = e: -1; }  →  43
   #   cases (err "fail") { ok = x: x; err = e: e + "!" }  →  "fail!"
-  cases = inst: handlers: matchResult inst {
-    Ok = v: handlers.ok v.value;
-    Err = v: handlers.err v.value;
-  };
+  # Throws eagerly if `handlers` is missing `ok` or `err`.
+  cases = inst: handlers:
+    if !(handlers ? ok) then
+      throw "Result.cases: handlers missing 'ok' key (function)"
+    else if !(handlers ? err) then
+      throw "Result.cases: handlers missing 'err' key (function)"
+    else matchResult inst {
+      Ok = v: handlers.ok v.value;
+      Err = v: handlers.err v.value;
+    };
 }

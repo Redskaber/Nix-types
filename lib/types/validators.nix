@@ -227,6 +227,32 @@ in {
           Find: ${types.descTp input}.
         '';
 
+    # Validate that all elements/values in the input are enum instances.
+    # Without this, accessing `.tag` on a non-instance produces an
+    # uncatchable builtin error.
+    validateInputElements = input:
+      if builtins.isList input then
+        let
+          bad = builtins.filter (x: !types.isInst x) input;
+        in
+        if bad == [ ] then true
+        else throw ''
+          enum::match: list elements must be enum instances
+            First non-instance element: ${types.descTp (builtins.head bad)}
+        ''
+      else if builtins.isAttrs input then
+        let
+          badKeys = builtins.filter (k: !types.isInst input.${k}) (builtins.attrNames input);
+        in
+        if badKeys == [ ] then true
+        else
+          let k = builtins.head badKeys; in
+          throw ''
+            enum::match: attrset values must be enum instances
+              Key '${k}' has: ${types.descTp input.${k}}
+          ''
+      else true;
+
     validatePatternsType = patterns:
       if builtins.isAttrs patterns then true
       else
@@ -235,13 +261,22 @@ in {
         '';
 
     validateOrderKeyTp = match-porder:
-      if (builtins.isList match-porder)
-         && (builtins.all (key: builtins.isString key) match-porder) then true
-      else
+      if !(builtins.isList match-porder
+           && builtins.all (key: builtins.isString key) match-porder) then
         throw ''
           enum::match: Expected __PORDER__ must be a list of strings,
           found ${types.descTp match-porder}.
-        '';
+        ''
+      else if builtins.length match-porder != builtins.length (utils.unique match-porder) then
+        let
+          dups = builtins.filter
+            (k: (utils.count (x: x == k) match-porder) > 1)
+            (utils.unique match-porder);
+        in
+        throw ''
+          enum::match: __PORDER__ contains duplicate keys: ${builtins.concatStringsSep ", " dups}
+        ''
+      else true;
 
     validateOrderKeyCount = input: match-porder:
       let input-count = builtins.length (builtins.attrNames input); in

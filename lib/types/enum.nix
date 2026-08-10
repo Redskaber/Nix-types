@@ -21,7 +21,15 @@ in
     in
     builtins.seq (parsed-meta.typename)
       (let
-        meta = types.EnumMeta { typename = parsed-meta.typename; };
+        # Include variant names in meta so isType can distinguish enums
+        # with the same typename but different variant sets.
+        variantNames =
+          if builtins.isList variants then variants
+          else builtins.attrNames variants;
+        meta = types.EnumMeta {
+          typename = parsed-meta.typename;
+          inherit variantNames;
+        };
       in
       builtins.seq (validators.validateVariantsType variants)
         (if builtins.isList variants then

@@ -1,5 +1,76 @@
 # Changelog
 
+## [3.3.0] — 2026-08-10
+
+### Summary
+
+Final-audit fixes: safety guards on all entry points, type-identity
+fingerprint, __PORDER__ duplicate detection, documentation accuracy.
+386 tests across 14 suites.
+
+### Critical fixes
+
+**C1. `flake.nix` `mkTestDerivation` called test with spurious argument**
+- `(import ./test { inherit lib; })` tried to call a non-function attrset,
+  breaking `nix build .#test` and `nix flake check`.
+- Fix: `(import ./test)` — test/default.nix takes no arguments.
+
+### High-severity fixes
+
+**H7. `match` with non-instance elements → catchable throw**
+- Previously, `match [ 42 ] { ... }` or `match { x = "not-inst"; } { ... }`
+  produced uncatchable builtin errors when accessing `.tag`.
+- Fix: added `validateInputElements` that checks all list/attrset elements
+  are enum instances before matching. Throws a descriptive, catchable error.
+
+**H8. `serialize` on non-instance → catchable throw**
+- `serialize 42` produced a lazy attrset with throwing fields (uncatchable).
+- Fix: added `isInst` guard at the top of `serialize`.
+
+**H9. `option.cases`/`result.cases` with missing handler keys → catchable throw**
+- `option.cases none { some = x: x; }` → uncatchable `attribute 'none' missing`.
+- Fix: both `cases` functions now eagerly validate that `handlers` contains
+  all required keys (`some`/`none` for Option, `ok`/`err` for Result).
+
+### Medium fixes
+
+**M8. `isType` now distinguishes enums with different variant sets**
+- Previously, two `enum "Color" [...]` calls with different variants were
+  indistinguishable by `isType` (both had `__meta__ = { typename = "Color"; }`).
+- Fix: `__meta__` now includes `variantNames`, so `isType` can distinguish
+  enums with the same typename but different variant sets.
+
+**M9. `__PORDER__` with duplicate keys → catchable throw**
+- `__PORDER__ = [ "a" "a" ]` was silently mishandled (only last occurrence
+  kept, other keys dropped).
+- Fix: `validateOrderKeyTp` now checks for duplicates and throws.
+
+**M10/M11. Documentation stale test counts fixed**
+- README and ARCHITECTURE.md had outdated "284 tests" / "10 suites" counts.
+- Updated to 386 tests / 14 suites.
+
+### Low fixes
+
+**L16/L17. `some null` / `some [ ]` edge cases tested**
+- The `null` sentinel collision (null = both "no payload" and "payload is
+  null") and the empty-list display quirk are now documented via tests.
+- `value` is correct in both cases; only `display` is affected.
+
+**L19. Option helper count corrected (14 → 13)**
+- ARCHITECTURE.md listed 14 helpers but only 13 were enumerated.
+
+**L20. `lib/default.nix` doc for `lib` nested export corrected**
+- Now accurately states `lib (utils + core API + predicates + config)`.
+
+**L21. Stale version comment removed from `lib/types/default.nix`**
+
+### Added
+
+- **`test/cases/audit3.nix`** (30 tests) — regression tests for all the
+  above fixes, including edge cases for null/empty-list values.
+
+---
+
 ## [3.2.0] — 2026-08-10
 
 ### Summary

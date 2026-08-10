@@ -33,9 +33,12 @@ let
     else v;
 in {
   serialize = enum-instance:
-    {
-      tag = enum-instance.tag;
-      typename = enum-instance.__meta__.typename;
-      value = serializeValue enum-instance.value;
-    };
+    if !types.isInst enum-instance then
+      throw "serialize: expected enum instance, found ${types.descTp enum-instance}"
+    else
+      {
+        tag = enum-instance.tag;
+        typename = enum-instance.__meta__.typename;
+        value = serializeValue enum-instance.value;
+      };
 }

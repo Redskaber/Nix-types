@@ -93,8 +93,15 @@ in {
   # Unlike `Option.match` (which gives the handler the full instance),
   # `cases` unwraps the value for the `some` branch:
   #   cases (some 42) { some = x: x + 1; none = 0; }  →  43
-  cases = inst: handlers: matchOption inst {
-    Some = v: handlers.some v.value;
-    None = _: handlers.none;
-  };
+  # The `none` handler is a bare value (not a function).
+  # Throws eagerly if `handlers` is missing `some` or `none`.
+  cases = inst: handlers:
+    if !(handlers ? some) then
+      throw "Option.cases: handlers missing 'some' key (function)"
+    else if !(handlers ? none) then
+      throw "Option.cases: handlers missing 'none' key (value)"
+    else matchOption inst {
+      Some = v: handlers.some v.value;
+      None = _: handlers.none;
+    };
 }

@@ -30,12 +30,16 @@ in rec {
       (builtins.seq (validators.match.validateInputNonEmpty input)
         (builtins.seq (validators.match.validatePatternsType patterns)
           (if builtins.isList input then
-            matchMulti input patterns null
+            # Multi-instance list match: validate elements are instances.
+            builtins.seq (validators.match.validateInputElements input)
+              (matchMulti input patterns null)
           else if types.isInst input then
             let handler = matchOnce input patterns; in
             if builtins.isFunction handler then handler input else handler
           else
-            matchAttrs input patterns)));
+            # Multi-instance attrset match: validate elements are instances.
+            builtins.seq (validators.match.validateInputElements input)
+              (matchAttrs input patterns))));
 
   # --- Single-instance match -----------------------------------------
   # Falls back to wildcard `_` if defined, else throws non-exhaustive.

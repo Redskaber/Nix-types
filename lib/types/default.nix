@@ -2,7 +2,7 @@
 # @description: Aggregator module — assembles all type-system pieces and
 #               exposes the public surface.
 #
-# Public exports (v3.0 — clean names, no deprecated aliases):
+# Public exports (clean names, no deprecated aliases):
 #   { enum, match, serialize,             # core API
 #     isEnum, isInst, isType, descTp,     # predicates & descriptors
 #     isLiteral, isDeepLiteral, isContainer,

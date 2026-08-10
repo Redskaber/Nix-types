@@ -19,7 +19,7 @@ configurations.
 - **Modern** — uses `|>` pipe operator, `@` pattern binding, `rec` for mutual
   recursion, layered modules with explicit dependency injection.
 - **Efficient** — strict folds (`foldl'`), lazy dispatch on variant shape,
-  no redundant computations; 284 tests run in ~50 ms.
+  no redundant computations; 386 tests run in ~70 ms.
 - **Clean API** — bare camelCase (no `fn-` prefix), matches nixpkgs convention.
   No backward-compat aliases.
 
@@ -157,7 +157,7 @@ Option = Some(value) | None
 
 - `Some` takes a BARE value (not attrset) — `some 42` stores `42` directly.
 - Helpers are namespaced under `option` (e.g., `nt.option.unwrap`).
-- 14 helpers: `some`, `none`, `isSome`, `isNone`, `unwrap`, `unwrapOr`,
+- 13 helpers: `some`, `none`, `isSome`, `isNone`, `unwrap`, `unwrapOr`,
   `unwrapOrElse`, `expect`, `map`, `mapOr`, `andThen`, `filter`, `cases`.
 
 ### Result
@@ -229,7 +229,7 @@ stayed lazy. This catches accidental strictness changes in refactors.
 
 ## 7. Test architecture
 
-356 tests across 13 suites:
+386 tests across 14 suites:
 
 | Suite | Count | Coverage |
 |-------|-------|----------|
@@ -246,7 +246,8 @@ stayed lazy. This catches accidental strictness changes in refactors.
 | lazy | 34 | lazy evaluation boundaries (LAZY vs EAGER) |
 | audit | 16 | regression tests for v3.0 deep-audit fixes |
 | audit2 | 18 | regression tests for v3.1 fresh-audit fixes |
-| **total** | **356** | |
+| audit3 | 30 | regression tests for v3.2 final-audit fixes |
+| **total** | **386** | |
 
 ### Test framework correctness
 
