@@ -18,24 +18,23 @@ in
   enum = enumType: variants:
     let
       parsed-meta = types.parseTypeName enumType;
+      # Include variant names in meta so isType can distinguish enums
+      # with the same typename but different variant sets.
+      variantNames =
+        if builtins.isList variants then variants
+        else builtins.attrNames variants;
+      meta = types.EnumMeta {
+        typename = parsed-meta.typename;
+        inherit variantNames;
+      };
     in
     builtins.seq (parsed-meta.typename)
-      (let
-        # Include variant names in meta so isType can distinguish enums
-        # with the same typename but different variant sets.
-        variantNames =
-          if builtins.isList variants then variants
-          else builtins.attrNames variants;
-        meta = types.EnumMeta {
-          typename = parsed-meta.typename;
-          inherit variantNames;
-        };
-      in
-      builtins.seq (validators.validateVariantsType variants)
-        (if builtins.isList variants then
-          constructors.mkEnumInstStructTupleVariants
-            (types.EnumInstStruct { inherit meta variants; })
-        else
-          constructors.mkEnumInstStructPostableVariants
-            (types.EnumInstStruct { inherit meta variants; })));
+      (builtins.seq (validators.validateVariantsType variants)
+        (builtins.seq (validators.validateVariantNames variants)
+          (if builtins.isList variants then
+            constructors.mkEnumInstStructTupleVariants
+              (types.EnumInstStruct { inherit meta variants; })
+          else
+            constructors.mkEnumInstStructPostableVariants
+              (types.EnumInstStruct { inherit meta variants; }))));
 }

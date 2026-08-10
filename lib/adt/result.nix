@@ -35,8 +35,9 @@ in {
   err = Result.Err;  # err e → Result instance with value = e
 
   # === Predicates ===
-  isOk = inst: inst.tag == "Ok";
-  isErr = inst: inst.tag == "Err";
+  # Guard with isAttrs to prevent uncatchable builtin errors on non-attrsets.
+  isOk = inst: builtins.isAttrs inst && inst ? tag && inst.tag == "Ok";
+  isErr = inst: builtins.isAttrs inst && inst ? tag && inst.tag == "Err";
 
   # === Extractors ===
   unwrap = inst: matchResult inst {
@@ -97,8 +98,12 @@ in {
   cases = inst: handlers:
     if !(handlers ? ok) then
       throw "Result.cases: handlers missing 'ok' key (function)"
+    else if !(builtins.isFunction handlers.ok) then
+      throw "Result.cases: 'ok' handler must be a function, found ${builtins.typeOf handlers.ok}"
     else if !(handlers ? err) then
       throw "Result.cases: handlers missing 'err' key (function)"
+    else if !(builtins.isFunction handlers.err) then
+      throw "Result.cases: 'err' handler must be a function, found ${builtins.typeOf handlers.err}"
     else matchResult inst {
       Ok = v: handlers.ok v.value;
       Err = v: handlers.err v.value;

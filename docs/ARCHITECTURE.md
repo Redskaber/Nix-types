@@ -19,7 +19,7 @@ configurations.
 - **Modern** — uses `|>` pipe operator, `@` pattern binding, `rec` for mutual
   recursion, layered modules with explicit dependency injection.
 - **Efficient** — strict folds (`foldl'`), lazy dispatch on variant shape,
-  no redundant computations; 386 tests run in ~70 ms.
+  no redundant computations; 419 tests run in ~70 ms.
 - **Clean API** — bare camelCase (no `fn-` prefix), matches nixpkgs convention.
   No backward-compat aliases.
 
@@ -55,7 +55,10 @@ Every enum instance has this clean, standardized shape:
   value = null;                   # payload (public)
   display = "enum::Color::Red";   # pre-computed display string (public)
   __toString = self: self.display; # Nix magic: enables "${instance}"
-  __meta__ = { typename = "Color"; }; # enum identity (internal)
+  __meta__ = {                    # enum identity (internal)
+    typename = "Color";
+    variantNames = [ "Red" "Green" "Blue" ];
+  };
   __enumInstance__ = true;        # duck-type marker (internal)
 }
 ```
@@ -229,7 +232,7 @@ stayed lazy. This catches accidental strictness changes in refactors.
 
 ## 7. Test architecture
 
-386 tests across 14 suites:
+419 tests across 15 suites:
 
 | Suite | Count | Coverage |
 |-------|-------|----------|
@@ -247,7 +250,8 @@ stayed lazy. This catches accidental strictness changes in refactors.
 | audit | 16 | regression tests for v3.0 deep-audit fixes |
 | audit2 | 18 | regression tests for v3.1 fresh-audit fixes |
 | audit3 | 30 | regression tests for v3.2 final-audit fixes |
-| **total** | **386** | |
+| audit4 | 33 | regression tests for v3.3 exhaustive-audit fixes |
+| **total** | **419** | |
 
 ### Test framework correctness
 

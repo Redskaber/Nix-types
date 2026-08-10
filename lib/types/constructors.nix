@@ -17,7 +17,10 @@
 #     value = null;                   # payload (public)
 #     display = "enum::Color::Red";   # pre-computed display string (public)
 #     __toString = self: self.display; # Nix magic: enables "${instance}"
-#     __meta__ = { typename = "Color"; }; # enum identity (internal)
+#     __meta__ = {                    # enum identity (internal)
+#       typename = "Color";
+#       variantNames = [ "Red" "Green" "Blue" ];
+#     };
 #     __enumInstance__ = true;        # duck-type marker (internal)
 #   }
 

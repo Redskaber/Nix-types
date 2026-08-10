@@ -42,8 +42,11 @@ in {
   none = Option.None;   # unit variant (no payload)
 
   # === Predicates ===
-  isSome = inst: inst.tag == "Some";
-  isNone = inst: inst.tag == "None";
+  # Guard with isAttrs to prevent uncatchable builtin errors on non-attrsets.
+  # Note: we check `tag` rather than full isType(this, Option) for performance
+  # and to allow duck-typing (e.g., testing mock attrsets in user code).
+  isSome = inst: builtins.isAttrs inst && inst ? tag && inst.tag == "Some";
+  isNone = inst: builtins.isAttrs inst && inst ? tag && inst.tag == "None";
 
   # === Extractors ===
   unwrap = inst: matchOption inst {
@@ -98,6 +101,8 @@ in {
   cases = inst: handlers:
     if !(handlers ? some) then
       throw "Option.cases: handlers missing 'some' key (function)"
+    else if !(builtins.isFunction handlers.some) then
+      throw "Option.cases: 'some' handler must be a function, found ${builtins.typeOf handlers.some}"
     else if !(handlers ? none) then
       throw "Option.cases: handlers missing 'none' key (value)"
     else matchOption inst {

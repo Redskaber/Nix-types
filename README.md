@@ -3,9 +3,9 @@
 A pure-Nix type system focused on **algebraic data types (ADT / sum types)** with
 **pattern matching**. Zero external dependencies — only Nix builtins.
 
-> v3.3: Final audit fixes — safety guards on all entry points (match,
-> serialize, cases), type-identity fingerprint, __PORDER__ duplicate detection.
-> 386 tests across 14 suites, all genuinely verifying correctness.
+> v3.4: Exhaustive audit fixes — variant name validation, predicate safety
+> guards, cases handler type validation, serialize lambda handling.
+> 419 tests across 15 suites, all genuinely verifying correctness.
 
 ## Highlights
 
@@ -13,11 +13,11 @@ A pure-Nix type system focused on **algebraic data types (ADT / sum types)** wit
 - **Clean API** — bare camelCase (no `fn-` prefix), matches nixpkgs convention.
 - **Safe** — strong validation at every public entry; descriptive, contextual errors.
 - **Modern** — `|>` pipe operator, `@` pattern binding, layered modules.
-- **Efficient** — strict folds, lazy dispatch; 386 tests in ~70 ms.
+- **Efficient** — strict folds, lazy dispatch; 419 tests in ~70 ms.
 - **String interpolation** — `"${instance}"` just works (via `__toString`).
 - **ADT library** — built-in `Option` (Some/None) and `Result` (Ok/Err) with
   full helper API (unwrap, map, andThen, filter, cases, etc.).
-- **Well-tested** — 386 tests across 14 categories.
+- **Well-tested** — 419 tests across 15 categories.
 
 ## Quick start
 
@@ -63,7 +63,10 @@ Every enum instance has this clean, standardized shape:
   value = null;                   # payload (public)
   display = "enum::Color::Red";   # pre-computed display string (public)
   __toString = self: self.display; # Nix magic: enables "${instance}"
-  __meta__ = { typename = "Color"; }; # enum identity (internal)
+  __meta__ = {                    # enum identity (internal)
+    typename = "Color";
+    variantNames = [ "Red" "Green" "Blue" ];
+  };
   __enumInstance__ = true;        # duck-type marker (internal)
 }
 ```
@@ -158,7 +161,7 @@ nix-types/
 ├── test/
 │   ├── default.nix            # test entry
 │   ├── framework.nix          # test framework
-│   └── cases/                 # 14 test suites (386 tests)
+│   └── cases/                 # 15 test suites (419 tests)
 ├── scripts/run-tests.sh       # CLI test runner
 └── docs/
     ├── ARCHITECTURE.md
@@ -196,7 +199,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full lazy/eager map.
 ./scripts/run-tests.sh --json    # JSON for CI
 ```
 
-### Test categories (386 tests)
+### Test categories (419 tests)
 
 | Suite | Count | Coverage |
 |-------|-------|----------|
@@ -205,7 +208,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full lazy/eager map.
 | postable | 32 | enum/tuple/fun/mixed variants |
 | match | 32 | single/list/attrset, errors, chaining |
 | predicates | 52 | all predicates, parseTypeName |
-| serialize | 14 | recursive normalization, JSON safety |
+| serialize | 14 | recursive normalization, JSON safety, lambda handling |
 | errors | 19 | error paths |
 | library | 18 | library-level API, top-level exports |
 | option | 38 | Option ADT (construct/pred/extract/transform/match) |
@@ -214,7 +217,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full lazy/eager map.
 | audit | 16 | regression tests for v3.0 deep-audit fixes |
 | audit2 | 18 | regression tests for v3.1 fresh-audit fixes |
 | audit3 | 30 | regression tests for v3.2 final-audit fixes |
-| **total** | **386** | |
+| audit4 | 33 | regression tests for v3.3 exhaustive-audit fixes |
+| **total** | **419** | |
 
 > **Note**: The test framework uses `builtins.deepSeq thunk thunk` to verify
 > test return values (not `builtins.seq thunk true`, which would make every

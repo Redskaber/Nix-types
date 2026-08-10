@@ -18,6 +18,7 @@ let
     audit      = import ./cases/audit.nix;
     audit2     = import ./cases/audit2.nix;
     audit3     = import ./cases/audit3.nix;
+    audit4     = import ./cases/audit4.nix;
   };
 
   all-results = builtins.concatLists (builtins.attrValues

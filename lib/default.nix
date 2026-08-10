@@ -8,7 +8,7 @@
 #   Utils:    trim, splitString, zipListsWith, listToIndexedAttrs, ...
 #   ADT:      Option, Result, some, none, ok, err,
 #             optionToResult, resultToOption
-#   Nested:   types (struct defs + config), lib (utils + core API + predicates + config),
+#   Nested:   types (predicates + struct defs + config), lib (utils + core API + predicates + config),
 #             option (namespaced Option helpers), result (namespaced Result helpers)
 #
 # Note: Option/Result helpers (unwrap, map, etc.) are namespaced under

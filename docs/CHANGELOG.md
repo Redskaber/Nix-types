@@ -1,5 +1,75 @@
 # Changelog
 
+## [3.4.0] — 2026-08-10
+
+### Summary
+
+Exhaustive-audit fixes: variant name validation, predicate safety guards,
+cases handler type validation, serialize lambda handling, documentation
+accuracy. 419 tests across 15 suites.
+
+### High-severity fixes
+
+**H10. Variant name validation added**
+- Empty strings, duplicates, non-string names, and collisions with internal
+  fields (`__meta__`, `match`, `serialize`, `__variants__`) were silently
+  accepted, causing confusing behavior later.
+- Fix: `validateVariantName` + `validateVariantNames` check all variant
+  names eagerly. Throws descriptive, catchable errors.
+
+**H11. ADT predicates guard against non-attrsets**
+- `option.isSome 42` / `result.isOk "hello"` produced uncatchable builtin
+  errors (accessing `.tag` on non-attrset).
+- Fix: `isSome`/`isNone`/`isOk`/`isErr` now check `builtins.isAttrs inst`
+  first, returning `false` for non-attrsets instead of crashing.
+
+**H12. `cases` validates handler types are functions**
+- `option.cases (some 42) { some = 42; none = 0; }` produced an uncatchable
+  builtin error when calling the non-function `some` handler.
+- Fix: both `cases` functions now validate `handlers.some`/`ok`/`err` are
+  functions before matching. `none` is a value (not a function) for Option.
+
+### Medium fixes
+
+**M12. `__PORDER__` collision with variant names**
+- A variant named `__PORDER__` would be inaccessible as a pattern key.
+- Fix: covered by H10's internal-field collision check.
+
+**M13. Non-string list elements in unit enum**
+- `m.enum "E" [ "A" 42 ]` produced an uncatchable builtin error.
+- Fix: covered by H10's `validateVariantName` (checks `isString`).
+
+**M14. `serialize` handles lambdas safely**
+- If a function-validator returned an attrset containing a lambda,
+  `builtins.toJSON (m.serialize inst)` would fail with an uncatchable error.
+- Fix: `serializeValue` now converts lambdas to `"<lambda>"` string,
+  ensuring the output is always JSON-safe.
+
+### Low fixes
+
+**L22. `__meta__` structure diagrams updated**
+- README, ARCHITECTURE.md, and constructors.nix now show the `variantNames`
+  field added in v3.3.
+
+**L23. `lib/default.nix` `m.types` description corrected**
+- Now accurately states `types (predicates + struct defs + config)`.
+
+**L24. `validateFunRst` comment corrected**
+- Changed "non-empty attrset" to "attrset (may be empty)" to match actual
+  behavior.
+
+**L25. Test coverage gaps filled**
+- Added `test/cases/audit4.nix` (33 tests) covering: variant name
+  validation, predicate safety, cases handler types, serialize lambda
+  handling, nested tuple construction, wrong-enum match, andThen chains.
+
+### Added
+
+- **`test/cases/audit4.nix`** (33 tests) — regression tests for all the
+  above fixes.
+
+---
+
 ## [3.3.0] — 2026-08-10
 
 ### Summary

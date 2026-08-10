@@ -16,7 +16,7 @@
 { config, types }:
 let
   utils = import ./utils.nix;
-in {
+in rec {
   # ---- Top-level variants validator -----------------------------------
   # The `variants` argument to `enum` must be a list (unit-enum) or attrset
   # (postable-enum). An empty list is allowed (produces an enum type with no
@@ -32,6 +32,55 @@ in {
         enum error: postable enum variants cannot be empty
       ''
     else true;
+
+  # ---- Variant name validator -----------------------------------------
+  # Validates that variant names are legal identifiers and don't collide
+  # with internal fields. Catches:
+  #   - non-string names (would cause uncatchable builtin errors later)
+  #   - empty strings / invalid characters
+  #   - duplicates (in list form; attrsets can't have duplicate keys)
+  #   - collisions with internal fields (__meta__, match, serialize, etc.)
+  validateVariantName = name:
+    if !builtins.isString name then
+      throw "enum error: variant name must be a string, found ${types.descTp name}"
+    else if builtins.match "^[A-Za-z_][A-Za-z0-9_-]*$" name == null then
+      throw "enum error: invalid variant name '${name}' (must be alphanumeric identifier, optionally with hyphens)"
+    else if builtins.elem name config.keys.internal
+         || builtins.elem name [ "match" "serialize" "__variants__" ] then
+      throw "enum error: variant name '${name}' collides with internal field"
+    else true;
+
+  validateVariantNames = variants:
+    if builtins.isList variants then
+      let
+        # Validate each name is a legal identifier (force eagerly).
+        validated = builtins.foldl' (status: v:
+          builtins.seq (validateVariantName v) status
+        ) true variants;
+        # Check for duplicates.
+        dupCount = builtins.length (utils.unique variants);
+      in
+      builtins.seq validated (
+        if builtins.length variants != dupCount then
+          let
+            dups = builtins.filter
+              (v: (utils.count (x: x == v) variants) > 1)
+              (utils.unique variants);
+          in
+          throw ''
+            enum error: duplicate variant names: ${builtins.concatStringsSep ", " dups}
+          ''
+        else true
+      )
+    else
+      # Attrset: keys are unique by construction, just validate each name.
+      let
+        names = builtins.attrNames variants;
+        validated = builtins.foldl' (status: n:
+          builtins.seq (validateVariantName n) status
+        ) true names;
+      in
+      builtins.seq validated true;
 
   # ---- Postable validators (variant value + argument checking) --------
   postable = rec {
@@ -166,7 +215,7 @@ in {
         (validateTuplePositionType enum-struct postable-variant postable-values postable-args);
 
     # Validate the return value of a user-supplied validator function.
-    # Allowed: true | non-empty attrset (success),
+    # Allowed: true | attrset (success, may be empty — enriches the instance),
     #          false | { __throw__ = "..." } (failure).
     validateFunRst = rst-postable: _postable-args:
       if types.isPostableValidRst rst-postable then

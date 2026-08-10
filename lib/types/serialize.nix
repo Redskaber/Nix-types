@@ -24,12 +24,14 @@ let
   # - enum instances → their `tag` (string)
   # - attrsets → recursively normalized (preserving keys)
   # - lists → recursively normalized (element-wise)
+  # - lambdas → "<lambda>" (cannot be JSON-serialized)
   # - everything else → kept as-is
   serializeValue = v:
     if v == config.const.non-postable then config.const.non-postable
     else if types.isInst v then v.tag
     else if builtins.isAttrs v then builtins.mapAttrs (_: serializeValue) v
     else if builtins.isList v then map serializeValue v
+    else if builtins.isFunction v then "<lambda>"
     else v;
 in {
   serialize = enum-instance:
