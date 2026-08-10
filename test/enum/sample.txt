@@ -1,2 +1,0 @@
-This is a sample file used by test/enum/default.nix as a path literal.
-It only needs to exist; its content is irrelevant.

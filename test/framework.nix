@@ -11,39 +11,48 @@
 #                    total, passed, failed, failures, allPassed
 #                  }
 #
-# A "test" is a thunk that evaluates to `true` on success or `throw`s on failure.
-# Tests that don't throw but return a non-`true` value are also recorded as failures
-# (with a descriptive error).
+# A "test" is a thunk that evaluates to `true` on success or `throw`s on
+# failure. Tests that don't throw but return a non-`true` value are also
+# recorded as failures (with a descriptive error).
+#
+# Note on `builtins.tryEval`:
+#   It catches `throw` (and `assert false`) but does NOT catch:
+#     - `abort` (terminates the whole evaluation)
+#     - builtin type errors (e.g., `elemAt` out-of-bounds, attr access on non-attrs)
+#   Library code uses `throw` exclusively for user-facing errors, so
+#   `assertThrows` works for testing library error paths.
 
 { }:
 let
+  # Convert an error value to a human-readable string (safely).
+  errToMsg = e:
+    let r1 = builtins.tryEval (toString e); in
+    if r1.success then r1.value
+    else
+      let r2 = builtins.tryEval (builtins.toJSON e); in
+      if r2.success then r2.value
+      else "<unevaluable error>";
+
   # Run a single test case. Captures any thrown error.
   # Returns: { name = ...; ok = bool; error = string | null; }
+  #
+  # Key implementation detail:
+  #   `builtins.seq thunk thunk` forces `thunk` to WHNF and RETURNS the
+  #   thunk's value (not `true`). This is critical: `seq thunk true` would
+  #   return `true` regardless of what `thunk` evaluated to, making every
+  #   non-throwing test vacuously pass.
   run = name: thunk:
     let
-      # Force evaluation; both the thunk itself and `== true` check.
-      # We use a nested tryEval so that even errors during `== true`
-      # comparison or `toJSON` rendering are caught.
-      step1 = builtins.tryEval (builtins.seq thunk true);
-      # If step1 succeeded, also verify the thunk returned `true`.
-      step2 =
-        if !step1.success then { success = false; value = step1.value; }
-        else builtins.tryEval (step1.value == true);
-      # Final ok flag.
-      ok = step2.success && step2.value == true;
-      # Capture error message safely (errors may be strings or error objects).
+      # Force the thunk and capture its actual value (or the thrown error).
+      result = builtins.tryEval (builtins.deepSeq thunk thunk);
+      # The test passes iff the thunk evaluated to exactly `true`.
+      ok = result.success && result.value == true;
       errStr =
         if ok then null
-        else if !step1.success then _errToMsg step1.value
-        else if !step2.success then _errToMsg step2.value
-        else "test did not return true";
-      _errToMsg = e:
-        let r = builtins.tryEval (toString e);
-        in if r.success then r.value
-        else let r2 = builtins.tryEval (builtins.toJSON e);
-             in if r2.success then r2.value
-             else "<unevaluable error>";
-    in {
+        else if !result.success then errToMsg result.value
+        else "test returned ${builtins.toJSON result.value} (expected true)";
+    in
+    {
       inherit name ok;
       error = errStr;
     };
@@ -55,10 +64,11 @@ let
       results = map (c: run c.name c.test) cases;
       pass = builtins.filter (r: r.ok) results;
       fail = builtins.filter (r: !r.ok) results;
-    in {
-      total    = builtins.length results;
-      passed   = builtins.length pass;
-      failed   = builtins.length fail;
+    in
+    {
+      total = builtins.length results;
+      passed = builtins.length pass;
+      failed = builtins.length fail;
       failures = fail;
       allPassed = builtins.length fail == 0;
     };
@@ -85,23 +95,15 @@ let
     '';
 
   # Assert that a thunk throws (used for testing error paths).
-  # Note: `builtins.tryEval` only catches `throw` (and `assert false`); it does
-  # NOT catch builtin type errors (e.g., `elemAt` out-of-bounds, attribute
-  # access on non-attrs). Library code uses `throw` exclusively, so this works
-  # for testing library error paths. Returns true iff the thunk raises.
+  # Returns true iff the thunk raises.
   assertThrows = name: thunk:
-    let r = builtins.tryEval (builtins.seq thunk true); in
+    let r = builtins.tryEval (builtins.deepSeq thunk thunk); in
     if r.success then
       throw ''[${name}] assertThrows failed: expected an error, but the thunk succeeded.''
     else true;
-
-  # Note: `assertThrowsWith` was removed because Nix's `builtins.tryEval`
-  # returns `{ success = false; value = false; }` — it does NOT preserve the
-  # error message string. Use `assertThrows` and inspect traces manually
-  # when you need to verify error contents.
-
-in {
+in
+{
   inherit run runAll
-          assertEqual assertTrue assertFalse
-          assertThrows;
+    assertEqual assertTrue assertFalse
+    assertThrows;
 }

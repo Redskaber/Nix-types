@@ -1,228 +1,261 @@
-# nix-types — 架构与设计文档（无泛型版本）
+# Architecture
 
-## 1. 项目意图
+This document describes the design decisions, layered architecture, and data
+flow of `nix-types` v3.0.
 
-`nix-types` 是一个 **纯 Nix builtins** 实现的类型系统库，专注于 **代数数据类型（ADT / Sum Type）** 与 **模式匹配（pattern matching）**，适合在 Nix 配置中声明领域模型、状态机、校验器与受控的 ADT 值。
+## 1. Project intent
 
-### 设计目标
+`nix-types` is a **pure Nix builtins** implementation of an algebraic data type
+(ADT / sum type) system with pattern matching, suitable for declaring domain
+models, state machines, validators, and controlled ADT values in Nix
+configurations.
 
-- **零依赖**：仅使用 Nix 语言内置函数（`builtins.*`），不依赖 `nixpkgs` 或任何 flake input。
-- **安全**：所有公共入口都有强校验；错误信息可读、可定位；用 `builtins.seq` 保证错误严格触发。
-- **现代**：使用 `|>` 管道操作符、`@` 模式绑定、`rec` 闭包等现代 Nix 语法；模块分层清晰。
-- **高效**：避免重复计算；使用 `builtins.foldl'` 严格折叠；构造器惰性分派。
-- **调用方书写方式不变**：保留原始 `enum "T" [...]` / `enum "T" {...}` / `T.match ...` / `types.fn-isXxx` 等 API。
+### Design goals
 
-### 与原版差异
+- **Zero dependencies** — only Nix language builtins (`builtins.*`), no nixpkgs,
+  no flake inputs, no FFI.
+- **Safe** — every public entry point has strong validation; error messages are
+  readable, contextual, and surfaced eagerly via `builtins.seq`.
+- **Modern** — uses `|>` pipe operator, `@` pattern binding, `rec` for mutual
+  recursion, layered modules with explicit dependency injection.
+- **Efficient** — strict folds (`foldl'`), lazy dispatch on variant shape,
+  no redundant computations; 284 tests run in ~50 ms.
+- **Clean API** — bare camelCase (no `fn-` prefix), matches nixpkgs convention.
+  No backward-compat aliases.
 
-移除了 **泛型（generic types）** 相关的所有内容：
+## 2. Design decision: carry vs separate
 
-| 删除 | 原因 |
-|------|------|
-| `enum "Foo<T,R>" {...}` 解析 | 不需要参数化类型 |
-| `Foo Color Shape Position` 实例化 | 不需要类型参数 |
-| `__isGeneric__` / `__genericParams__` / `__arity__` / `__functor` / `instantiate` | 泛型基础设施 |
-| `types.fn-isGeneric` / `types.fn-isGenericInst` | 泛型谓词 |
-| `types.EnumGenericTypeStruct` | 泛型类型结构 |
-| `validators.generic.*` | 泛型校验器 |
-| `fn-mkGeneric*` 系列 | 泛型实例化逻辑 |
+### The question
 
-保留 **非泛型类型设计** 的全部能力：
+Should enum types carry functions (`Shape.match`, `Shape.serialize`) or should
+functions be separated at the library level (`lib.match Shape inst`, `lib.serialize inst`)?
 
-| 保留 | 用途 |
-|------|------|
-| 单元枚举 `enum "Color" ["Red" "Green" "Blue"]` | 简单选择类型 |
-| Postable 枚举 `enum "Shape" { Circle=Color; Square=[Color Color Color]; Triangle={...}:fn; }` | 携带值的变体 |
-| 字面量变体（int/float/bool/null/string/path） | 配置常量 |
-| 元组变体 `[T1 T2 T3]` | 位置参数 |
-| 函数校验器变体 `{pos1,pos2,...}@inst: fn` | 自定义校验 |
-| `T.match inst { Red=...; _=...; }` | 单实例匹配 |
-| `T.match [c1 c2 c3] { Red.Circle.local={_1,_2,_3}:...; _._._=...; }` | 多实例列表匹配 |
-| `T.match { inherit c1 c2 c3; } { __PORDER__=[...]; Red.Circle.local=...; }` | 多实例 attrset 匹配（带顺序） |
-| `types.fn-isEnum/fn-isInst/fn-isType/fn-descTp` | 类型自省 |
-| `T.serialize inst` | 序列化为 `{tag,type,value}` |
-| 严格错误信息 | 校验失败时给出可读诊断 |
+### Decision: Separate (library-level) + Carry (alias)
 
----
+- **Primary API**: library-level functions `match`, `serialize` — defined once
+  in `match.nix` / `serialize.nix`, exported at the top level.
+- **Alias**: enum types carry `Shape.match` / `Shape.serialize` as thin aliases
+  that delegate to the library functions.
 
-## 2. 分层架构
+**Rationale**:
+- `match` and `serialize` are pure functions of `(input, patterns)` and
+  `(instance)` — they don't reference the enum type. Carrying is just an alias.
+- **Performance**: neutral (Nix caches imports; the alias is just an attr pointer).
+- **Organization**: separating gives single source of truth, testability
+  without an enum, consistent with `isEnum`/`isInst` being library-level.
+- **Ergonomics**: carrying provides `Shape.match inst` ergonomics.
 
-```
-lib/enum/default.nix
-├── LAYER 0: config          — 配置与常量
-├── LAYER 1: lib             — 核心工具库（字符串、列表、attrset 辅助）
-├── LAYER 2: types           — 类型谓词与描述符
-├── LAYER 3: validators      — 校验层（types/postable/fn/match）
-├── LAYER 4: constructors    — 变体实例构造器
-├── LAYER 5: match           — 模式匹配引擎
-└── LAYER 6: factory         — 公共 enum 工厂入口
-```
+## 3. Instance data structure (v3.0)
 
-### 各层职责
-
-- **LAYER 0 config**：所有常量集中管理，避免散落的魔术字符串。
-- **LAYER 1 lib**：纯函数工具集，不引用其他层，可独立测试。
-- **LAYER 2 types**：类型谓词（`fn-isEnum`、`fn-isInst`、`fn-isType`、`fn-descTp`）和结构定义（`EnumInstMeta`、`EnumInstStruct`、`VariantInstValueBase` 等）。
-- **LAYER 3 validators**：所有 `throw` 集中在此层，错误信息格式化、上下文信息、嵌套诊断。
-- **LAYER 4 constructors**：将 enum 定义编译为可调用的构造器（每个变体对应一个 lambda）。
-- **LAYER 5 match**：模式匹配引擎，支持单匹配、多匹配、`__PORDER__`、通配符 `_`、特异性排序。
-- **LAYER 6 factory**：`enum` 入口，分派到 tuple-enum 或 postable-enum 构造路径。
-
-### 数据流
+Every enum instance has this clean, standardized shape:
 
 ```
-[调用方] enum "Shape" { Circle=Color; ... }
-   │
-   ▼
-[factory] fn-mkEnumDispatcher
-   │  (校验 variants 类型)
-   ▼
-[constructors] fn-mkEnumInstStructPostableVariants
-   │  (为每个 variant 生成分派构造器)
-   ▼
-[types.EnumTypeFuncs] { __typename__, __meta__, __variants__, match, serialize, <variants>... }
-   │
-   ▼
-[调用方] Shape.Circle Color.Red
-   │
-   ▼
-[constructors] fn-postableDispatchConstructor → fn-postableEnumConstructor
-   │  (校验 arg 是 Color 的实例)
-   ▼
-[types.VariantInstValueBase] { tag, type, value, toString, __IS_ENUM_INSTANCE_MASKER_V1__ }
-```
-
----
-
-## 3. 调用方 API（不变）
-
-```nix
-{ enum, types, lib, ... }:
-
-let
-  # 1) 单元枚举
-  Color = enum "Color" [ "Red" "Green" "Blue" ];
-  cg = Color.Green;
-  rc-cg = Color.match cg {
-    Red   = v: "enum::Color::${v.tag}";
-    Green = v: "enum::Color::${v.tag}";
-    Blue  = v: "enum::Color::${v.tag}";
-  };
-
-  # 2) Postable 枚举
-  validator_func = { pos1, pos2, pos3, ... }:
-    if pos1.tag == pos2.tag
-      then { inherit pos1 pos2 pos3; }
-    else { __throw = "Expected pos1 == pos2, found `${pos1.tag} != ${pos2.tag}`"; };
-
-  Shape = enum "Shape" {
-    Circle    = Color;
-    Square    = [ Color Color Color ];
-    Triangle  = { pos1, pos2, pos3 }@instance: validator_func instance;
-    Rhombus   = { pos1, pos2, pos3, ... }@instance: validator_func instance;
-  };
-
-  sc = Shape.Circle Color.Red;
-  ss = Shape.Square [ Color.Red Color.Green Color.Blue ];
-  st = Shape.Triangle { pos1=Color.Red; pos2=Color.Red; pos3=Color.Blue; };
-
-  rs-sc = Shape.match sc {
-    Circle = v: "enum::Shape::${v.tag}";
-    _      = v: "Other: ${v.tag}";
-  };
-
-  # 3) 多实例匹配（列表）
-  color = Color.Red; shape = Shape.Circle Color.Red;
-  rs-gps = Shape.match [ color shape ] {
-    Red.Circle = { _1, _2 }: "${_1.tag}, ${_2.tag}";
-    _._        = { ... }: 0;
-  };
-
-  # 4) 多实例匹配（attrset + __PORDER__）
-  rs-gpsd = Shape.match { inherit color shape; } {
-    __PORDER__ = [ "color" "shape" ];
-    Red.Circle = { color, shape }: "${color.tag}, ${shape.tag}";
-    _._        = { ... }: 0;
-  };
-
-  # 5) 字面量与混合变体
-  Drive = enum "Drive" {
-    self         = Color.Red;
-    intel        = "intel";
-    nvidia       = "nvidia";
-    intel-nvidia = [ "intel" "nvidia" ];
-  };
-
-  # 6) 类型自省
-  is-enum  = types.fn-isEnum Shape;
-  is-inst  = types.fn-isInst sc;
-  is-type  = types.fn-isType sc Shape;          # true
-  desc     = types.fn-descTp sc;                # "enum::Shape::Circle(enum::Color::Red)"
-  ser      = Shape.serialize sc;                # { tag="Circle"; type=...; value=...; }
-in { ... }
-```
-
----
-
-## 4. 测试标准化
-
-测试结构：
-
-```
-test/
-├── default.nix          # 测试入口：聚合所有模块、生成总结
-├── framework.nix        # 测试小框架：run / runAll / assertXxx
-└── enum/
-    └── default.nix      # 枚举所有用例，按 feature 分组
-```
-
-### 测试框架设计
-
-```nix
-# test/framework.nix
-{ run = name: thunk:              # 运行单个测试，捕获异常
-    let r = builtins.tryEval (builtins.seq thunk true);
-    in { inherit name; ok = r.success;
-         error = if r.success then null else (toString r.value); };
-
-  runAll = cases:                 # 运行用例列表，统计 pass/fail
-    let results = map (c: run c.name c.test) cases;
-        pass = builtins.filter (r: r.ok) results;
-        fail = builtins.filter (r: !r.ok) results;
-    in { total   = builtins.length results;
-         passed  = builtins.length pass;
-         failed  = builtins.length fail;
-         failures = fail;
-         allPassed = builtins.length fail == 0; };
-
-  assertEqual = name: a: b: a == b;
-  assertTrue  = name: v: v == true;
+{
+  tag = "Red";                    # variant name (public)
+  value = null;                   # payload (public)
+  display = "enum::Color::Red";   # pre-computed display string (public)
+  __toString = self: self.display; # Nix magic: enables "${instance}"
+  __meta__ = { typename = "Color"; }; # enum identity (internal)
+  __enumInstance__ = true;        # duck-type marker (internal)
 }
 ```
 
-### 测试用例分组
+### Naming convention
 
-- `unit.*` — 单元枚举：创建、匹配、序列化
-- `postable.literal.*` — 字面量变体（int/float/bool/null/string/path）
-- `postable.enum.*` — 枚举类型变体
-- `postable.tuple.*` — 元组变体
-- `postable.fun.*` — 函数校验器变体（含 `__throw` 错误路径）
-- `postable.mixed.*` — 混合变体（如 Drive）
-- `match.single.*` — 单实例匹配（含通配符）
-- `match.list.*` — 多实例列表匹配（特异性排序）
-- `match.attrset.*` — attrset 匹配（`__PORDER__`）
-- `match.exhaust.*` — 非穷尽匹配错误用例
-- `types.*` — 类型谓词（`fn-isEnum/fn-isInst/fn-isType/fn-descTp`）
-- `serialize.*` — 序列化
+| Category | Convention | Examples |
+|----------|-----------|----------|
+| Public fields | bare lowercase | `tag`, `value`, `display` |
+| Internal metadata | dunder | `__meta__`, `__enumInstance__` |
+| Nix magic | dunder function | `__toString` |
+| Reserved in user data | dunder | `__PORDER__`, `__throw__` |
+| Public functions | bare camelCase | `enum`, `match`, `isEnum`, `descTp` |
+| Internal validators | `validate` prefix | `validateVariantsType`, `validateValue` |
+| Internal constructors | `mk` prefix | `mkInstance`, `mkTupleVariant` |
+| Struct definitions | PascalCase | `EnumMeta`, `VariantInst` |
 
-### 测试运行方式
+## 4. Module architecture
 
-```bash
-# 1) 全部测试，打印总结
-nix eval --impure --file ./test/default.nix
-
-# 2) 只看是否通过（exit code 0 = 全过）
-nix eval --impure --file ./test/default.nix allPassed --raw && echo OK
-
-# 3) 查看失败用例
-nix eval --impure --file ./test/default.nix failures --json
 ```
+lib/
+├── default.nix            # public entry (core + adt)
+├── types/                 # core type system
+│   ├── default.nix        # aggregator
+│   ├── config.nix         # constants
+│   ├── utils.nix          # pure helpers
+│   ├── predicates.nix     # type predicates
+│   ├── validators.nix     # validation logic
+│   ├── constructors.nix   # variant constructors (single mkInstance)
+│   ├── match.nix          # pattern matching engine
+│   ├── serialize.nix      # serialization
+│   └── enum.nix           # enum factory
+└── adt/                   # ADT library extensions
+    ├── default.nix        # aggregator + cross-conversion
+    ├── option.nix         # Option, Some, None, helpers
+    └── result.nix         # Result, Ok, Err, helpers
+```
+
+### Dependency graph
+
+```
+                     ┌──────────┐
+                     │ config   │
+                     └────┬─────┘
+                          │
+        ┌─────────────────┼─────────────────┐
+        │                 │                 │
+        ▼                 ▼                 ▼
+  ┌──────────┐    ┌──────────────┐   ┌──────────────┐
+  │ utils    │    │ predicates   │   │              │
+  └────┬─────┘    └──────┬───────┘   │              │
+       │                 │           │              │
+       │      ┌──────────┘           │              │
+       │      │                      │              │
+       ▼      ▼                      ▼              ▼
+  ┌────────────────┐         ┌──────────────┐  ┌──────────────┐
+  │  validators    │◄────────│   match      │  │  serialize   │
+  └────────┬───────┘         └──────┬───────┘  └──────┬───────┘
+           │                        │                 │
+           ▼                        ▼                 ▼
+        ┌─────────────────────────────────────────────────┐
+        │              constructors                       │
+        │  (single mkInstance; imports match & serialize  │
+        │   as aliases on the enum type)                  │
+        └─────────────────────┬───────────────────────────┘
+                              │
+                              ▼
+                       ┌──────────────┐
+                       │   enum       │  ← public factory
+                       └──────┬───────┘
+                              │
+                              ▼
+                       ┌──────────────┐
+                       │  default     │  ← aggregator
+                       └──────────────┘
+```
+
+### Key design choices
+
+1. **Single `mkInstance`** — all per-shape constructors delegate to one
+   `mkInstance` function, ensuring consistent field layout and avoiding
+   duplication (was 4 copies in v2.x, now 1).
+
+2. **Explicit dependency injection** — each module receives its dependencies
+   as an attrset argument (`{ config, types, ... }`). No implicit imports,
+   easy to test in isolation.
+
+3. **Deep-literal vs tuple distinction** — `mkMapTuplePostable` checks
+   `isDeepLiteral` first: deep-literal lists (e.g., `["a" "b"]`) are kept
+   as lists; non-literal lists (tuple args) are converted to indexed attrsets.
+
+## 5. ADT library (Option / Result)
+
+### Option
+
+```
+Option = Some(value) | None
+```
+
+- `Some` takes a BARE value (not attrset) — `some 42` stores `42` directly.
+- Helpers are namespaced under `option` (e.g., `nt.option.unwrap`).
+- 14 helpers: `some`, `none`, `isSome`, `isNone`, `unwrap`, `unwrapOr`,
+  `unwrapOrElse`, `expect`, `map`, `mapOr`, `andThen`, `filter`, `cases`.
+
+### Result
+
+```
+Result = Ok(value) | Err(error)
+```
+
+- Both `Ok` and `Err` take bare values.
+- Helpers are namespaced under `result` (e.g., `nt.result.unwrap`).
+- 13 helpers: `ok`, `err`, `isOk`, `isErr`, `unwrap`, `unwrapErr`,
+  `unwrapOr`, `unwrapOrElse`, `expect`, `map`, `mapErr`, `andThen`, `cases`.
+
+### Cross-conversion
+
+- `optionToResult`: `Some(x) → Ok(x)`, `None → Err(null)`
+- `resultToOption`: `Ok(x) → Some(x)`, `Err(_) → None`
+
+## 6. Lazy evaluation boundaries
+
+Nix is lazy by default, but certain operations force evaluation. This section
+documents exactly which operations are lazy and which are eager, so callers
+can reason about performance and infinite-data scenarios.
+
+### LAZY (does NOT force values until accessed)
+
+| Operation | Behavior |
+|-----------|----------|
+| `enum "Name" { A = ...; B = ...; }` | Creating an enum does NOT force variant descriptors. |
+| `E.A` (variant access) | Forces only variant A's descriptor; B stays lazy. |
+| `inst.tag` | Does NOT force `inst.value` (independent attrset fields). |
+| `match inst { Red = ...; _ = ...; }` | Only the matched handler runs; other handlers stay lazy. |
+| `match [a b] { Red.Green = ...; _._ = ...; }` | Only the matched pattern's handler runs. |
+| `isEnum v`, `isInst v` | Check attr presence (WHNF only); do NOT force values. |
+| `isType v t` | Compares `__meta__`; does NOT force values. |
+| `serialize inst` (accessing `.tag` only) | `.tag` and `.typename` don't force `.value`. |
+| `none` (Option.None) | Unit variant — no value to force. |
+
+### EAGER (forces values at the indicated point)
+
+| Operation | Forces | Why |
+|-----------|--------|-----|
+| `Shape.Square [a b c]` (tuple construct) | All args | Validator checks arity + type of each position. |
+| `Shape.Triangle { ... }` (fn validator) | The arg + return value | Validator fn runs at construct time; returned attrset enriches the instance. |
+| `some (throw "X")`, `ok (throw "X")` | The value | Some/Ok use validator fn `_: true`, which runs eagerly. |
+| `inst.display` | The value | Display string includes the value for interpolation. |
+| `"${inst}"` | The value | Uses `__toString` → `display` → forces value. |
+| `serialize inst` (accessing `.value`) | The value | The `isInst` check forces the value. |
+| `option.unwrap s` | The value | Returns the value directly. |
+| `option.map f s` | The value | Applies `f` to the value. |
+| `option.cases s { ... }` | The value | Passes value to the handler. |
+| `option.filter pred s` | The value | Applies `pred` to the value. |
+
+### Design rationale
+
+The eager points are deliberate safety tradeoffs:
+- **Tuple/fn validators** run at construct time to catch arity/type errors
+  early (fail-fast), rather than deferring errors to access time.
+- **Display/toString** must force the value to build the string.
+- **Some/Ok** use validator functions because the enum system requires a
+  descriptor shape (function = validator). A future optimization could add
+  a "passthrough" descriptor type that avoids the validator call.
+
+### Testing
+
+The `test/cases/lazy.nix` suite (34 tests) verifies these boundaries using
+`throw` as a probe — if a `throw` fires, the value was forced; if not, it
+stayed lazy. This catches accidental strictness changes in refactors.
+
+## 7. Test architecture
+
+356 tests across 13 suites:
+
+| Suite | Count | Coverage |
+|-------|-------|----------|
+| unit | 23 | unit enum, string interpolation, field names |
+| literal | 21 | every literal type, edge cases |
+| postable | 32 | enum/tuple/fun/mixed variants |
+| match | 32 | single/list/attrset, errors, chaining |
+| predicates | 52 | all predicates, parseTypeName |
+| serialize | 14 | flat output, recursive value normalization, JSON safety |
+| errors | 19 | error paths |
+| library | 18 | library-level API, top-level exports |
+| option | 38 | Option ADT (construct/pred/extract/transform/match) |
+| result | 39 | Result ADT (construct/pred/extract/transform/match) |
+| lazy | 34 | lazy evaluation boundaries (LAZY vs EAGER) |
+| audit | 16 | regression tests for v3.0 deep-audit fixes |
+| audit2 | 18 | regression tests for v3.1 fresh-audit fixes |
+| **total** | **356** | |
+
+### Test framework correctness
+
+The test framework (`test/framework.nix`) uses `builtins.deepSeq thunk thunk`
+to force the thunk to its full normal form and return its actual value. This
+is critical: `builtins.seq thunk true` would return `true` regardless of the
+thunk's value, making every non-throwing test vacuously pass.
+
+The `audit.framework.*` tests verify this behavior:
+- `1 == 2` → correctly fails (not vacuously passes)
+- `1 == 1` → correctly passes
+- `throw "x"` → correctly fails
