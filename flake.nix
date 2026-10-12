@@ -7,8 +7,9 @@
 # flake input-free. If you prefer a flake-locked nixpkgs, add it to `inputs`.
 #
 # Exposes:
-#   lib                       — the library (importable: `nix eval .#lib.enum`)
-#   packages.<sys>.default    — store-path derivation of the library
+#   lib                       — the library (importable: `nix eval .#lib.enum`);
+#                               `lib.version` is the machine-assertable identity
+#   packages.<sys>.default    — store-path derivation of the library (name carries lib.version)
 #   packages.<sys>.test       — derivation whose build runs the test suite
 #   checks.<sys>.testSuite    — same as above, for `nix flake check`
 #   apps.<sys>.test           — `nix run .#test` prints a summary
@@ -29,7 +30,7 @@
 
       pkgsFor = sys: import <nixpkgs> { system = sys; };
 
-      mkLibDerivation = pkgs: pkgs.runCommand "nix-types" { } ''
+      mkLibDerivation = pkgs: pkgs.runCommand "nix-types-${lib.version}" { } ''
         mkdir -p $out
         cp -r ${./.}/lib $out/lib
         cp ${./.}/flake.nix $out/flake.nix
@@ -59,7 +60,7 @@
         type = "app";
         program = toString (pkgs.writeShellScript "nix-types-demo" ''
           cat <<'EOF'
-=== nix-types v3.4 demo ===
+=== nix-types v${lib.version} demo ===
 
 1) Unit enum:
    Color = enum "Color" [ "Red" "Green" "Blue" ];

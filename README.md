@@ -3,21 +3,24 @@
 A pure-Nix type system focused on **algebraic data types (ADT / sum types)** with
 **pattern matching**. Zero external dependencies — only Nix builtins.
 
-> v3.5: Final exhaustive audit — variant name wildcard/reserved-key
-> rejection, cases handler validation, error message grammar, enum-type
-> match guard. 440 tests across 16 suites.
+> v3.6: Machine-assertable version identity — `lib.version` exposed at
+> the top level, locked by the `version` suite (6 laws: existence, semver
+> shape, pinned value, no-leak boundary ×3); derivation names carry the
+> same string. 446 tests across 17 suites.
 
 ## Highlights
 
 - **Zero deps** — only `builtins.*`. No nixpkgs, no flake inputs.
 - **Clean API** — bare camelCase (no `fn-` prefix), matches nixpkgs convention.
+- **Versioned** — `lib.version` is machine-assertable: downstream pins a rev
+  AND asserts the version string, so a silent API-drifting bump is impossible.
 - **Safe** — strong validation at every public entry; descriptive, contextual errors.
 - **Modern** — `|>` pipe operator, `@` pattern binding, layered modules.
-- **Efficient** — strict folds, lazy dispatch; 440 tests in ~70 ms.
+- **Efficient** — strict folds, lazy dispatch; 446 tests in ~70 ms.
 - **String interpolation** — `"${instance}"` just works (via `__toString`).
 - **ADT library** — built-in `Option` (Some/None) and `Result` (Ok/Err) with
   full helper API (unwrap, map, andThen, filter, cases, etc.).
-- **Well-tested** — 440 tests across 16 categories.
+- **Well-tested** — 446 tests across 17 categories.
 
 ## Quick start
 
@@ -191,6 +194,15 @@ The `test/cases/lazy.nix` suite (34 tests) verifies these boundaries using
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full lazy/eager map.
 
+## Consuming as a flake input
+
+For production consumers the interesting questions are not "what does the
+API do" (above) but "how do I pin, assert, and share this library without
+surprises": rev pinning, the version contract (`lib.version`), sibling
+`follows`, policy tables, Result railways, exhaustive dispatch — and when
+*not* to enum-ify. All of it, with the failure modes each pattern
+prevents: **[docs/PATTERNS.md](docs/PATTERNS.md)**.
+
 ## Running tests
 
 ```bash
@@ -199,7 +211,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full lazy/eager map.
 ./scripts/run-tests.sh --json    # JSON for CI
 ```
 
-### Test categories (440 tests)
+### Test categories (446 tests)
 
 | Suite | Count | Coverage |
 |-------|-------|----------|
@@ -219,7 +231,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full lazy/eager map.
 | audit3 | 30 | regression tests for v3.2 final-audit fixes |
 | audit4 | 33 | regression tests for v3.3 exhaustive-audit fixes |
 | audit5 | 21 | regression tests for v3.4 final-exhaustive-audit fixes |
-| **total** | **440** | |
+| version | 6 | version identity: existence, semver shape, pinned value, no-leak boundary |
+| **total** | **446** | |
 
 > **Note**: The test framework uses `builtins.deepSeq thunk thunk` to verify
 > test return values (not `builtins.seq thunk true`, which would make every

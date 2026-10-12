@@ -4,6 +4,7 @@
 # Combines the core type system and the ADT extensions.
 #
 # Public exports (top-level):
+#   Version:  version (machine-assertable identity string)
 #   Core:     enum, match, serialize, isEnum, isInst, isType, descTp, ...
 #   Utils:    trim, splitString, zipListsWith, listToIndexedAttrs, ...
 #   ADT:      Option, Result, some, none, ok, err,
@@ -21,5 +22,6 @@
 let
   core = import ./types;
   adt = import ./adt { inherit (core) enum; };
+  version = import ./version.nix;
 in
-  core // adt
+  core // adt // version

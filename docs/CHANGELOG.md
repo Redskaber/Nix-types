@@ -1,5 +1,42 @@
 # Changelog
 
+## [3.6.0] — 2026-10-12
+
+### Summary
+
+Machine-assertable version identity. The version number existed only in
+README/CHANGELOG headings and commit messages — a consumer could pin a rev
+but had no way to programmatically verify what it had pinned. Now `lib.version`
+is a top-level export, locked by its own test suite, and carried by the flake
+derivation names. 446 tests across 17 suites.
+
+### Additions
+
+**A1. `lib.version` — top-level identity string**
+- New `lib/version.nix` (single source of truth) joined at `lib/default.nix`:
+  `core // adt // version`.
+- Semver discipline documented at the definition site: major = breaking,
+  minor = additive, patch = fixes. This release is minor (additive export).
+
+**A2. `version` test suite (6 laws, suite #17)**
+- `test/cases/version.nix`: existence (top-level string), semver shape
+  (exactly `major.minor.patch`, all digits — keeps downstream `==` assertions
+  simple), pinned value (the truthfulness discipline: a bump that forgets the
+  suite goes red), and a three-part no-leak boundary (not on the enum type,
+  not on instances, not inside `__meta__` — the v3.0 metadata-cleanup line
+  stays clean: version travels only at the library top level).
+
+**A3. Derivation names carry the version**
+- `flake.nix` `mkLibDerivation`: `nix-types` → `nix-types-${lib.version}`;
+  demo banner reads the same string (was hand-written `v3.4`, two releases
+  stale — now single-sourced, cannot drift again).
+
+### Upgrade notes
+
+- Additive only: no existing export moved, no instance-shape change. Consumers
+  who want the identity contract add `lib.version == "..."` assertions in
+  their own batteries (see PATTERNS.md "Version contract").
+
 ## [3.5.0] — 2026-08-10
 
 ### Summary
